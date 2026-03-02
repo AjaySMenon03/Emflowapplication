@@ -1,0 +1,39 @@
+Manifest: Line: 3, column: 1, Syntax error.Understand this error
+emflow.figma.site/:1 <meta name="apple-mobile-web-app-capable" content="yes"> is deprecated. Please include <meta name="mobile-web-app-capable" content="yes">Understand this warning
+45f05809e8b8fce20785314c99be42cc04bf5dfc.js:24374 [SW] Registration failed: SecurityError: Failed to register a ServiceWorker for scope ('https://emflow.figma.site/') with script ('https://emflow.figma.site/sw.js'): The script has an unsupported MIME type ('text/html').
+login:1 <meta name="apple-mobile-web-app-capable" content="yes"> is deprecated. Please include <meta name="mobile-web-app-capable" content="yes">Understand this warning
+manifest.json:3 Manifest: Line: 3, column: 1, Syntax error.Understand this error
+agjmgcluyzzzcjkogixl.supabase.co/functions/v1/make-server-5252bcc1/auth/role:1  Failed to load resource: the server responded with a status of 401 ()Understand this error
+45f05809e8b8fce20785314c99be42cc04bf5dfc.js:22678 [API GET /auth/role] Error: Invalid JWT
+Me @ 45f05809e8b8fce20785314c99be42cc04bf5dfc.js:22678Understand this error
+45f05809e8b8fce20785314c99be42cc04bf5dfc.js:49787 [AuthProvider] checkRole failed: Invalid JWT
+i @ 45f05809e8b8fce20785314c99be42cc04bf5dfc.js:49787Understand this warning
+45f05809e8b8fce20785314c99be42cc04bf5dfc.js:22671  POST https://agjmgcluyzzzcjkogixl.supabase.co/functions/v1/make-server-5252bcc1/onboarding/business 401 (Unauthorized)
+Me @ 45f05809e8b8fce20785314c99be42cc04bf5dfc.js:22671
+l @ 45f05809e8b8fce20785314c99be42cc04bf5dfc.js:24916
+SD @ sites-runtime.ed340f7bffa7e99869e4202e80427255dbdc8bff3e9b8cbc6cc79c5d908c29e6.js:5
+TD @ sites-runtime.ed340f7bffa7e99869e4202e80427255dbdc8bff3e9b8cbc6cc79c5d908c29e6.js:5
+bD @ sites-runtime.ed340f7bffa7e99869e4202e80427255dbdc8bff3e9b8cbc6cc79c5d908c29e6.js:5
+lE @ sites-runtime.ed340f7bffa7e99869e4202e80427255dbdc8bff3e9b8cbc6cc79c5d908c29e6.js:5
+_C @ sites-runtime.ed340f7bffa7e99869e4202e80427255dbdc8bff3e9b8cbc6cc79c5d908c29e6.js:5
+(anonymous) @ sites-runtime.ed340f7bffa7e99869e4202e80427255dbdc8bff3e9b8cbc6cc79c5d908c29e6.js:5
+gS @ sites-runtime.ed340f7bffa7e99869e4202e80427255dbdc8bff3e9b8cbc6cc79c5d908c29e6.js:8
+oC @ sites-runtime.ed340f7bffa7e99869e4202e80427255dbdc8bff3e9b8cbc6cc79c5d908c29e6.js:5
+Py @ sites-runtime.ed340f7bffa7e99869e4202e80427255dbdc8bff3e9b8cbc6cc79c5d908c29e6.js:5
+Uv @ sites-runtime.ed340f7bffa7e99869e4202e80427255dbdc8bff3e9b8cbc6cc79c5d908c29e6.js:5
+VD @ sites-runtime.ed340f7bffa7e99869e4202e80427255dbdc8bff3e9b8cbc6cc79c5d908c29e6.js:5Understand this error
+45f05809e8b8fce20785314c99be42cc04bf5dfc.js:22678 [API POST /onboarding/business] Error: Invalid JWT
+Me @ 45f05809e8b8fce20785314c99be42cc04bf5dfc.js:22678
+await in Me
+l @ 45f05809e8b8fce20785314c99be42cc04bf5dfc.js:24916
+SD @ sites-runtime.ed340f7bffa7e99869e4202e80427255dbdc8bff3e9b8cbc6cc79c5d908c29e6.js:5
+TD @ sites-runtime.ed340f7bffa7e99869e4202e80427255dbdc8bff3e9b8cbc6cc79c5d908c29e6.js:5
+bD @ sites-runtime.ed340f7bffa7e99869e4202e80427255dbdc8bff3e9b8cbc6cc79c5d908c29e6.js:5
+lE @ sites-runtime.ed340f7bffa7e99869e4202e80427255dbdc8bff3e9b8cbc6cc79c5d908c29e6.js:5
+_C @ sites-runtime.ed340f7bffa7e99869e4202e80427255dbdc8bff3e9b8cbc6cc79c5d908c29e6.js:5
+(anonymous) @ sites-runtime.ed340f7bffa7e99869e4202e80427255dbdc8bff3e9b8cbc6cc79c5d908c29e6.js:5
+gS @ sites-runtime.ed340f7bffa7e99869e4202e80427255dbdc8bff3e9b8cbc6cc79c5d908c29e6.js:8
+oC @ sites-runtime.ed340f7bffa7e99869e4202e80427255dbdc8bff3e9b8cbc6cc79c5d908c29e6.js:5
+Py @ sites-runtime.ed340f7bffa7e99869e4202e80427255dbdc8bff3e9b8cbc6cc79c5d908c29e6.js:5
+Uv @ sites-runtime.ed340f7bffa7e99869e4202e80427255dbdc8bff3e9b8cbc6cc79c5d908c29e6.js:5
+VD @ sites-runtime.ed340f7bffa7e99869e4202e80427255dbdc8bff3e9b8cbc6cc79c5d908c29e6.js:5Understand this error

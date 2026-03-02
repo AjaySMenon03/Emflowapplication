@@ -68,14 +68,34 @@ export function OnboardingPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  const accessToken = session?.access_token;
+  /** Always get a fresh access token — never trust the cached one */
+  const getFreshToken = async (): Promise<string | null> => {
+    // First try the current session
+    const currentToken = session?.access_token;
+    if (currentToken) {
+      // Quick decode to check expiry
+      try {
+        const payload = JSON.parse(atob(currentToken.split(".")[1]));
+        const expiresAt = payload.exp * 1000;
+        // If token expires in more than 60s, it's fine
+        if (expiresAt - Date.now() > 60_000) return currentToken;
+      } catch {
+        // decode failed — refresh
+      }
+    }
+
+    // Token is missing or near-expiry — refresh
+    const { data } = await supabase.auth.refreshSession();
+    return data?.session?.access_token ?? null;
+  };
 
   const handleNext = async () => {
     setError("");
 
-    // Guard: don't call server endpoints without a valid session
+    // Guard: get a valid token or redirect
+    const accessToken = await getFreshToken();
     if (!accessToken) {
-      setError("Your session has expired. Please sign in again.");
+      navigate("/login", { replace: true });
       return;
     }
 

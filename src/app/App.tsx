@@ -30,9 +30,9 @@ function PWAInit() {
       document.head.appendChild(meta);
     }
     // Set apple-mobile-web-app meta tags
-    if (!document.querySelector('meta[name="apple-mobile-web-app-capable"]')) {
+    if (!document.querySelector('meta[name="mobile-web-app-capable"]')) {
       const capable = document.createElement("meta");
-      capable.name = "apple-mobile-web-app-capable";
+      capable.name = "mobile-web-app-capable";
       capable.content = "yes";
       document.head.appendChild(capable);
 

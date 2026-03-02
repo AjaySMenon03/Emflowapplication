@@ -1,20 +1,27 @@
 /**
  * API Helper - Typed fetch wrapper for server calls.
+ *
+ * Features:
+ * - Automatic 401 retry: refreshes the Supabase session once and retries.
+ * - Updates the Zustand auth store with the refreshed session.
  */
-import { API_BASE } from "./supabase";
+import { API_BASE, supabase } from "./supabase";
 import { publicAnonKey } from "/utils/supabase/info";
+import { useAuthStore } from "../stores/auth-store";
 
 interface ApiOptions {
   method?: "GET" | "POST" | "PUT" | "DELETE";
   body?: unknown;
   accessToken?: string;
+  /** Internal flag — prevents infinite retry loops */
+  _isRetry?: boolean;
 }
 
 export async function api<T = unknown>(
   path: string,
   options: ApiOptions = {}
 ): Promise<{ data: T | null; error: string | null }> {
-  const { method = "GET", body, accessToken } = options;
+  const { method = "GET", body, accessToken, _isRetry = false } = options;
 
   try {
     const headers: Record<string, string> = {
@@ -27,6 +34,33 @@ export async function api<T = unknown>(
       headers,
       body: body ? JSON.stringify(body) : undefined,
     });
+
+    // ── 401 auto-retry: refresh session and retry once ──
+    if (res.status === 401 && !_isRetry && accessToken) {
+      console.log(`[API ${method} ${path}] 401 — attempting session refresh & retry`);
+      try {
+        const { data: refreshData } = await supabase.auth.refreshSession();
+        const newToken = refreshData?.session?.access_token;
+
+        if (newToken && newToken !== accessToken) {
+          // Update Zustand store with refreshed session
+          const store = useAuthStore.getState();
+          if (refreshData.session) {
+            store.setAuth(refreshData.session.user, refreshData.session);
+          }
+
+          // Retry with the new token
+          return api<T>(path, {
+            method,
+            body,
+            accessToken: newToken,
+            _isRetry: true,
+          });
+        }
+      } catch (refreshErr) {
+        console.warn(`[API ${method} ${path}] Session refresh failed:`, refreshErr);
+      }
+    }
 
     const json = await res.json();
 

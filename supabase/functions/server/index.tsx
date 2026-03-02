@@ -33,6 +33,24 @@ function supabaseAdmin() {
 async function getAuthUser(c: any) {
   const token = c.req.header("Authorization")?.split(" ")[1];
   if (!token) return null;
+
+  // Early rejection: decode JWT payload to filter out anon/service-role keys
+  // (these are not user JWTs and will fail getUser() with "Invalid JWT")
+  try {
+    const payloadB64 = token.split(".")[1];
+    if (payloadB64) {
+      const payload = JSON.parse(atob(payloadB64));
+      // Supabase anon key has role "anon", service role key has role "service_role"
+      // Real user JWTs have role "authenticated"
+      if (payload.role === "anon" || payload.role === "service_role") {
+        console.log(`[getAuthUser] Rejected non-user JWT with role: ${payload.role}`);
+        return null;
+      }
+    }
+  } catch {
+    // If we can't decode, let getUser() handle the validation
+  }
+
   const supabase = supabaseAdmin();
   const {
     data: { user },

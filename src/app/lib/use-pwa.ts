@@ -23,6 +23,9 @@ export function useServiceWorker() {
   useEffect(() => {
     if (!("serviceWorker" in navigator)) return;
 
+    // Only register in production (sw.js may not exist in dev/preview)
+    if (location.hostname === "localhost" || location.hostname === "127.0.0.1") return;
+
     navigator.serviceWorker
       .register("/sw.js", { scope: "/" })
       .then((reg) => {
@@ -31,7 +34,8 @@ export function useServiceWorker() {
         console.log("[SW] Registered with scope:", reg.scope);
       })
       .catch((err) => {
-        console.log("[SW] Registration failed:", err);
+        // Silently ignore — SW isn't critical for app functionality
+        console.log("[SW] Registration skipped:", err.message || err);
       });
   }, []);
 
