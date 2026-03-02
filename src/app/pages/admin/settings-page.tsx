@@ -14,6 +14,7 @@ import { useLocaleStore } from "../../stores/locale-store";
 import { useAuthStore } from "../../stores/auth-store";
 import { api } from "../../lib/api";
 import { toast } from "sonner";
+import { BusinessHoursEditor } from "../../components/business-hours-editor";
 import {
   Card,
   CardContent,
@@ -79,6 +80,7 @@ import {
   AlertCircle,
   Save,
   X,
+  CalendarClock,
 } from "lucide-react";
 
 // ── Types ──
@@ -397,6 +399,24 @@ export function SettingsPage() {
                     </div>
                   </CardContent>
                 </Card>
+              ))}
+            </div>
+          </div>
+
+          <Separator />
+
+          {/* Business Hours per location */}
+          <div>
+            <h3 className="font-semibold text-foreground mb-3">Business Hours</h3>
+            <div className="space-y-4">
+              {locations.map((loc) => (
+                <BusinessHoursEditor
+                  key={loc.id}
+                  locationId={loc.id}
+                  locationName={loc.name}
+                  businessId={businessId || ""}
+                  accessToken={accessToken || ""}
+                />
               ))}
             </div>
           </div>

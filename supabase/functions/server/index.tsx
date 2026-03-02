@@ -1396,42 +1396,126 @@ app.put("/make-server-5252bcc1/settings/whatsapp/:businessId", async (c) => {
 });
 
 // ══════════════════════════════════════════════
-// SETTINGS — Business Hours
+// BUSINESS HOURS
 // ══════════════════════════════════════════════
 
-app.get("/make-server-5252bcc1/settings/business-hours/:locationId", async (c) => {
-  try {
-    const user = await getAuthUser(c);
-    if (!user) return c.json({ error: "Unauthorized" }, 401);
-    const locationId = c.req.param("locationId");
-    const hours = await kv.get(`business_hours:${locationId}`);
-    return c.json({ hours: hours || null });
-  } catch (err) {
-    return c.json({ error: `Business hours fetch failed: ${err.message}` }, 500);
-  }
-});
+// GET business hours for a location
+app.get(
+  "/make-server-5252bcc1/settings/business-hours/:locationId",
+  async (c) => {
+    try {
+      const user = await getAuthUser(c);
+      if (!user) return c.json({ error: "Unauthorized" }, 401);
 
-app.put("/make-server-5252bcc1/settings/business-hours/:locationId", async (c) => {
-  try {
-    const user = await getAuthUser(c);
-    if (!user) return c.json({ error: "Unauthorized" }, 401);
-    const staffRecord = await kv.get(`staff_user:${user.id}`);
-    if (!staffRecord || (staffRecord.role !== "owner" && staffRecord.role !== "admin"))
-      return c.json({ error: "Only owners/admins can update business hours" }, 403);
+      const locationId = c.req.param("locationId");
+      const hours = await kv.get(`business_hours:${locationId}`);
 
-    const locationId = c.req.param("locationId");
-    const body = await c.req.json();
-    await kv.set(`business_hours:${locationId}`, {
-      business_id: body.businessId || staffRecord.business_id,
-      location_id: locationId,
-      hours: body.hours,
-      updated_at: now(),
-    });
-    return c.json({ success: true });
-  } catch (err) {
-    return c.json({ error: `Business hours update failed: ${err.message}` }, 500);
+      return c.json({ hours: hours || null });
+    } catch (err) {
+      return c.json(
+        { error: `Failed to fetch business hours: ${err.message}` },
+        500
+      );
+    }
   }
-});
+);
+
+// PUT update business hours for a location
+app.put(
+  "/make-server-5252bcc1/settings/business-hours/:locationId",
+  async (c) => {
+    try {
+      const user = await getAuthUser(c);
+      if (!user) return c.json({ error: "Unauthorized" }, 401);
+
+      const locationId = c.req.param("locationId");
+      const { businessId, hours } = await c.req.json();
+
+      // Verify the user belongs to this business
+      const staffRecord = await kv.get(`staff_user:${user.id}`);
+      if (!staffRecord || staffRecord.business_id !== businessId) {
+        return c.json({ error: "Forbidden: not authorized for this business" }, 403);
+      }
+
+      // Only owner/admin can update hours
+      if (staffRecord.role !== "owner" && staffRecord.role !== "admin") {
+        return c.json({ error: "Forbidden: owner or admin role required" }, 403);
+      }
+
+      const data = {
+        location_id: locationId,
+        business_id: businessId,
+        hours,
+        updated_at: now(),
+      };
+
+      await kv.set(`business_hours:${locationId}`, data);
+
+      return c.json({ hours: data });
+    } catch (err) {
+      return c.json(
+        { error: `Failed to update business hours: ${err.message}` },
+        500
+      );
+    }
+  }
+);
+
+// GET business hours for public display (customer-facing)
+app.get(
+  "/make-server-5252bcc1/public/business-hours/:locationId",
+  async (c) => {
+    try {
+      const locationId = c.req.param("locationId");
+      const hours = await kv.get(`business_hours:${locationId}`);
+
+      if (!hours) {
+        return c.json({ hours: null, isOpen: true }); // Default: always open
+      }
+
+      // Determine if currently open
+      const nowDate = new Date();
+      const dayNames = [
+        "sunday",
+        "monday",
+        "tuesday",
+        "wednesday",
+        "thursday",
+        "friday",
+        "saturday",
+      ];
+      const todayKey = dayNames[nowDate.getDay()];
+      const todaySchedule = hours.hours?.[todayKey];
+
+      let isOpen = true;
+      if (todaySchedule) {
+        if (!todaySchedule.open) {
+          isOpen = false;
+        } else {
+          const currentMinutes =
+            nowDate.getHours() * 60 + nowDate.getMinutes();
+          const [openH, openM] = (todaySchedule.openTime || "09:00")
+            .split(":")
+            .map(Number);
+          const [closeH, closeM] = (todaySchedule.closeTime || "18:00")
+            .split(":")
+            .map(Number);
+          const openMinutes = openH * 60 + openM;
+          const closeMinutes = closeH * 60 + closeM;
+          isOpen =
+            currentMinutes >= openMinutes && currentMinutes <= closeMinutes;
+        }
+      }
+
+      return c.json({ hours: hours.hours, isOpen, today: todayKey });
+    } catch (err) {
+      return c.json(
+        { error: `Failed to fetch public business hours: ${err.message}` },
+        500
+      );
+    }
+  }
+);
 
 // ══════════════════════════════════════════════
 // SETTINGS — Invite new staff member

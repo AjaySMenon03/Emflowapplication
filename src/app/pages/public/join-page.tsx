@@ -66,6 +66,8 @@ export function JoinPage() {
   const [location, setLocation] = useState<LocationInfo | null>(null);
   const [businessName, setBusinessName] = useState("");
   const [queueTypes, setQueueTypes] = useState<QueueTypeInfo[]>([]);
+  const [isOpen, setIsOpen] = useState<boolean | null>(null);
+  const [todayHours, setTodayHours] = useState<{ openTime: string; closeTime: string } | null>(null);
 
   // Form
   const [name, setName] = useState("");
@@ -101,6 +103,23 @@ export function JoinPage() {
         setSelectedQueueType(data.queueTypes[0].id);
       }
       setLoading(false);
+
+      // Fetch business hours for open/closed status
+      if (data.location?.id) {
+        const hoursRes = await api<{ hours: any; isOpen: boolean; today: string }>(
+          `/public/business-hours/${data.location.id}`
+        );
+        if (hoursRes.data) {
+          setIsOpen(hoursRes.data.isOpen);
+          const todayKey = hoursRes.data.today;
+          if (hoursRes.data.hours?.[todayKey]?.open) {
+            setTodayHours({
+              openTime: hoursRes.data.hours[todayKey].openTime,
+              closeTime: hoursRes.data.hours[todayKey].closeTime,
+            });
+          }
+        }
+      }
     }
     load();
   }, [locationSlug]);
@@ -228,7 +247,38 @@ export function JoinPage() {
               {location.address}
             </p>
           )}
+
+          {/* Business hours status */}
+          {isOpen !== null && (
+            <div className="mt-2 flex items-center justify-center gap-2">
+              <span
+                className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium ${
+                  isOpen
+                    ? "bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400"
+                    : "bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400"
+                }`}
+              >
+                <span className={`h-1.5 w-1.5 rounded-full ${isOpen ? "bg-emerald-500" : "bg-red-500"}`} />
+                {isOpen ? "Open Now" : "Currently Closed"}
+              </span>
+              {todayHours && (
+                <span className="text-xs text-muted-foreground flex items-center gap-1">
+                  <Clock className="h-3 w-3" />
+                  {todayHours.openTime} — {todayHours.closeTime}
+                </span>
+              )}
+            </div>
+          )}
         </div>
+
+        {/* Closed warning */}
+        {isOpen === false && (
+          <div className="mb-4 rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/30 px-4 py-3 text-center">
+            <p className="text-sm text-amber-700 dark:text-amber-300">
+              This location is currently closed. You can still join the queue and will be served when it opens.
+            </p>
+          </div>
+        )}
 
         {/* Error */}
         {error && (

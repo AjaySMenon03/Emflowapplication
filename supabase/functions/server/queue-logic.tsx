@@ -18,6 +18,7 @@
  */
 
 import * as kv from "./kv_store.tsx";
+import { createClient } from "jsr:@supabase/supabase-js@2.49.8";
 
 // ── helpers ──
 
@@ -594,7 +595,7 @@ export async function logNotification(params: {
   });
 }
 
-// ── Broadcast helper (stores latest event for polling) ──
+// ── Broadcast helper (stores latest event for polling + Supabase Realtime) ──
 async function broadcastChange(
   businessId: string,
   locationId: string,
@@ -608,9 +609,29 @@ async function broadcastChange(
     business_id: businessId,
     location_id: locationId,
   };
-  // Store latest event for each location so frontend can poll
+  // Store latest event for each location so frontend can poll (fallback)
   await kv.set(`realtime_event:${locationId}`, event);
   // Also keep a rolling counter for change detection
   const counter = (await kv.get(`realtime_counter:${locationId}`)) || 0;
   await kv.set(`realtime_counter:${locationId}`, counter + 1);
+
+  // ── Supabase Realtime Broadcast (instant delivery) ──
+  try {
+    const supabase = createClient(
+      Deno.env.get("SUPABASE_URL"),
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")
+    );
+    const channelName = `queue-events:${locationId}`;
+    const channel = supabase.channel(channelName);
+    await channel.send({
+      type: "broadcast",
+      event: "queue_change",
+      payload: event,
+    });
+    // Clean up channel after sending
+    await supabase.removeChannel(channel);
+  } catch (err) {
+    // Non-critical: polling fallback will still work
+    console.log(`[Realtime broadcast] Warning: ${err.message || err}`);
+  }
 }

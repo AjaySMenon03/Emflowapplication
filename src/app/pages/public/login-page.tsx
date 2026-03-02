@@ -93,10 +93,29 @@ export function LoginPage() {
         body: { email, password, name },
       });
       if (signupErr) {
+        // If user already exists, auto-attempt sign-in with the provided credentials
+        if (
+          signupErr.toLowerCase().includes("already") ||
+          signupErr.toLowerCase().includes("registered") ||
+          signupErr.toLowerCase().includes("exists")
+        ) {
+          const { error: loginErr } = await supabase.auth.signInWithPassword({
+            email,
+            password,
+          });
+          if (loginErr) {
+            setError(
+              "An account with this email already exists. Please sign in instead."
+            );
+            setMode("email");
+          }
+          // If sign-in succeeded, AuthProvider handles the rest
+          return;
+        }
         setError(signupErr);
         return;
       }
-      // Auto sign-in after signup
+      // Auto sign-in after successful signup
       const { error: loginErr } = await supabase.auth.signInWithPassword({
         email,
         password,

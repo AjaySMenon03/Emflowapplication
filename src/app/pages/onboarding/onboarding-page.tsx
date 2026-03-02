@@ -73,6 +73,12 @@ export function OnboardingPage() {
   const handleNext = async () => {
     setError("");
 
+    // Guard: don't call server endpoints without a valid session
+    if (!accessToken) {
+      setError("Your session has expired. Please sign in again.");
+      return;
+    }
+
     // Validate current step
     const validationError = validateStep(store.currentStep);
     if (validationError) {

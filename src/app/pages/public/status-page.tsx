@@ -9,11 +9,12 @@
  * - Share link
  * - Realtime updates via polling
  */
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams } from "react-router";
 import { api } from "../../lib/api";
 import { useRealtimePublic } from "../../lib/use-realtime";
 import { useLocaleStore, type Locale, LOCALE_LABELS } from "../../stores/locale-store";
+import { usePushNotifications } from "../../lib/use-pwa";
 import { Button } from "../../components/ui/button";
 import {
   Card,
@@ -40,6 +41,10 @@ import {
   Copy,
   PartyPopper,
   Ban,
+  Bell,
+  BellOff,
+  Wifi,
+  WifiOff,
 } from "lucide-react";
 
 interface StatusData {
@@ -110,12 +115,14 @@ const STATUS_CONFIG: Record<
 export function StatusPage() {
   const { entryId } = useParams<{ entryId: string }>();
   const { locale, setLocale } = useLocaleStore();
+  const { showNotification, permission, requestPermission } = usePushNotifications();
 
   const [data, setData] = useState<StatusData | null>(null);
   const [loading, setLoading] = useState(true);
   const [cancelling, setCancelling] = useState(false);
   const [error, setError] = useState("");
   const [copied, setCopied] = useState(false);
+  const prevStatusRef = useRef<string | null>(null);
 
   const fetchStatus = useCallback(async () => {
     if (!entryId) return;
@@ -127,6 +134,27 @@ export function StatusPage() {
         if (!data) setError(apiErr || "Entry not found");
         return;
       }
+
+      // ── Push notification on status transition to "serving" ──
+      const prevStatus = prevStatusRef.current;
+      const newStatus = statusData.entry.status;
+      if (prevStatus && prevStatus !== newStatus) {
+        if (newStatus === "serving") {
+          showNotification("🎉 It's your turn!", {
+            body: `Ticket ${statusData.entry.ticket_number} — Please proceed to the counter now.`,
+            tag: "your-turn",
+            data: { entryId, url: window.location.href },
+            requireInteraction: true,
+          });
+        } else if (newStatus === "served") {
+          showNotification("✅ Service Complete", {
+            body: `Thank you for visiting, ${statusData.entry.customer_name || "Customer"}!`,
+            tag: "service-complete",
+          });
+        }
+      }
+      prevStatusRef.current = newStatus;
+
       setData(statusData);
       setError("");
     } catch {
@@ -134,7 +162,7 @@ export function StatusPage() {
     } finally {
       setLoading(false);
     }
-  }, [entryId]);
+  }, [entryId, showNotification]);
 
   // Initial load
   useEffect(() => {
@@ -372,6 +400,23 @@ export function StatusPage() {
             </Button>
           )}
         </div>
+
+        {/* Notification opt-in */}
+        {isActive && permission !== "granted" && "Notification" in window && (
+          <button
+            onClick={requestPermission}
+            className="w-full flex items-center justify-center gap-2 rounded-lg border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-950/30 px-4 py-3 text-sm text-blue-700 dark:text-blue-300 hover:bg-blue-100 dark:hover:bg-blue-950/50 transition-colors"
+          >
+            <Bell className="h-4 w-4" />
+            <span>Enable notifications to know when it's your turn</span>
+          </button>
+        )}
+        {isActive && permission === "granted" && (
+          <div className="flex items-center justify-center gap-2 text-xs text-emerald-600 dark:text-emerald-400">
+            <Bell className="h-3.5 w-3.5" />
+            <span>Notifications enabled — we'll alert you when it's your turn</span>
+          </div>
+        )}
 
         {/* Joined time */}
         <p className="text-center text-xs text-muted-foreground">
