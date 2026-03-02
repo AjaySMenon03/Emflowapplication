@@ -20,6 +20,6 @@ export const supabase = createClient(supabaseUrl, publicAnonKey, {
   },
 });
 
-export const API_BASE = `${supabaseUrl}/functions/v1/make-server-5252bcc1`;
+export const API_BASE = `/api`;
 
 export type { User, Session } from "@supabase/supabase-js";
