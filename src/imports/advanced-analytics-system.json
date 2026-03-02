@@ -1,0 +1,123 @@
+
+Enhance EM Flow with a full Advanced Analytics system for Owners.
+Stack:
+* Next.js 14 (App Router)
+* Supabase (PostgreSQL)
+* Recharts (charts)
+* TailwindCSS
+* next-intl
+Goal: Transform the analytics dashboard into a powerful decision-making interface with staff performance tracking, queue health scoring, and predictive trends.
+
+1️⃣ MAIN ANALYTICS DASHBOARD
+Route: /admin/analytics/[locationId]
+Add date range selector:
+* Today
+* Last 7 days
+* Last 30 days
+* Custom range
+All metrics must respect selected date range.
+
+2️⃣ CORE KPI CARDS (Top Section)
+Show animated KPI cards:
+* Total Customers Served
+* Average Wait Time
+* Average Service Time
+* No-Show Rate (%)
+* Peak Hour
+Each card must:
+* Show % change vs previous period
+* Color-coded trend indicator (green ↑ red ↓)
+Use aggregated SQL queries.
+
+3️⃣ STAFF PERFORMANCE LEADERBOARD
+Section: “Staff Performance”
+Show:
+* Staff Name
+* Total Served
+* Avg Service Time
+* Efficiency Score
+Efficiency Score Formula: (Total Served / Avg Service Time) normalized per location
+Add:
+* Sort by performance
+* Highlight top performer
+Only OWNER and SENIOR can view.
+
+4️⃣ QUEUE HEALTH SCORE SYSTEM
+Create a computed metric:
+Queue Health Score (0–100)
+Formula factors:
+* Avg Wait Time vs target
+* No-show rate
+* Current load vs avg load
+Output: 🟢 Smooth (80–100) 🟡 Busy (50–79) 🔴 Overloaded (<50)
+Display:
+* Circular progress indicator
+* Explanation tooltip
+
+5️⃣ HOURLY HEATMAP
+Build: Day vs Hour heatmap grid
+Rows: Monday → Sunday
+Columns: 9AM → 9PM (or business hours)
+Color intensity based on: Number of queue entries created
+Use aggregated SQL grouped by: EXTRACT(DOW) EXTRACT(HOUR)
+
+6️⃣ SERVICE TYPE ANALYSIS
+Section: “Service Insights”
+Show:
+* Most popular queue_type
+* Distribution pie chart
+* Avg wait per queue_type
+* Avg service time per queue_type
+Use grouped SQL queries.
+
+7️⃣ TREND CHART (Last 30 Days)
+Line chart:
+* Daily served count
+* Overlay avg wait time
+Purpose: Show growth or decline.
+
+8️⃣ PREDICTIVE BASIC TREND (V1 LIGHT)
+Add simple moving average:
+* 7-day rolling average
+Display subtle forecast arrow: “Demand trending up” “Demand stable” “Demand declining”
+No ML — simple statistical smoothing.
+
+9️⃣ SQL OPTIMIZATION
+Create SQL views:
+* location_daily_metrics
+* staff_performance_metrics
+* service_type_metrics
+* hourly_distribution
+Add indexes on:
+* location_id
+* created_at
+* served_at
+Avoid N+1 queries.
+
+🔟 UI DESIGN REQUIREMENTS
+* Bold modern SaaS
+* Clean spacing
+* Soft shadows
+* Smooth chart animations
+* Dark/light mode compatible
+Layout:
+* KPI row
+* Health score + Leaderboard
+* Heatmap full width
+* Service + Trend charts
+Mobile responsive.
+
+SECURITY
+Enforce:
+* Only OWNER can see financial-scale metrics
+* SENIOR can see limited performance view
+* JUNIOR cannot access analytics
+Respect RLS.
+
+Deliver:
+* Complete route
+* SQL view definitions
+* Recharts components
+* Optimized data fetching
+* Modular analytics components
+Keep architecture scalable for future revenue analytics.

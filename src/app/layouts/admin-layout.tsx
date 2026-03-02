@@ -1,8 +1,8 @@
 /**
  * Admin Layout - Navigation shell for authenticated admin routes.
- * Clean SaaS sidebar with smooth transitions and i18n.
+ * Clean SaaS sidebar with smooth transitions, i18n, and offline queue badge.
  */
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Outlet, NavLink, useNavigate } from "react-router";
 import {
   LayoutDashboard,
@@ -14,12 +14,19 @@ import {
   X,
   LogOut,
   Zap,
+  ScrollText,
+  TrendingUp,
+  QrCode,
+  UploadCloud,
 } from "lucide-react";
 import { ThemeToggle } from "../components/theme-toggle";
 import { LocaleSwitcher } from "../components/locale-switcher";
 import { useLocaleStore } from "../stores/locale-store";
 import { useAuthStore } from "../stores/auth-store";
 import { supabase } from "../lib/supabase";
+import { getPendingCount } from "../lib/offline-queue";
+import { OfflineQueueDrawer } from "../components/offline-queue-drawer";
+import { useNetworkStatus } from "../lib/use-network-status";
 import { Button } from "../components/ui/button";
 import { Separator } from "../components/ui/separator";
 import { Badge } from "../components/ui/badge";
@@ -29,14 +36,33 @@ const navItems = [
   { path: "/admin/queues", icon: ListOrdered, labelKey: "nav.queues" },
   { path: "/admin/users", icon: Users, labelKey: "nav.users" },
   { path: "/admin/reports", icon: BarChart3, labelKey: "nav.reports" },
+  { path: "/admin/analytics", icon: TrendingUp, labelKey: "nav.analytics", ownerOnly: true },
+  { path: "/admin/qr", icon: QrCode, labelKey: "nav.qrStand" },
   { path: "/admin/settings", icon: Settings, labelKey: "nav.settings" },
+  { path: "/admin/audit", icon: ScrollText, labelKey: "nav.audit", ownerOnly: true },
 ];
 
 export function AdminLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const { t } = useLocaleStore();
-  const { user, staffRecord } = useAuthStore();
+  const { user, session, staffRecord } = useAuthStore();
   const navigate = useNavigate();
+
+  // ── Offline queue awareness ──
+  const { isOnline } = useNetworkStatus();
+  const [pendingCount, setPendingCount] = useState(() => getPendingCount());
+  const [drawerOpen, setDrawerOpen] = useState(false);
+
+  // Poll pending count every 3s (localStorage doesn't have events)
+  useEffect(() => {
+    const id = setInterval(() => setPendingCount(getPendingCount()), 3000);
+    return () => clearInterval(id);
+  }, []);
+
+  // Also refresh when drawer closes or online state changes
+  useEffect(() => {
+    setPendingCount(getPendingCount());
+  }, [drawerOpen, isOnline]);
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
@@ -83,7 +109,9 @@ export function AdminLayout() {
 
         {/* Navigation */}
         <nav className="flex-1 space-y-0.5 px-3 py-4">
-          {navItems.map((item) => (
+          {navItems
+            .filter((item) => !item.ownerOnly || staffRecord?.role === "owner")
+            .map((item) => (
             <NavLink
               key={item.path}
               to={item.path}
@@ -98,9 +126,38 @@ export function AdminLayout() {
               }
             >
               <item.icon className="h-4 w-4 shrink-0" />
-              <span>{t(item.labelKey)}</span>
+              <span className="flex-1">{t(item.labelKey)}</span>
+              {/* Pending actions badge on Queues nav item */}
+              {item.path === "/admin/queues" && pendingCount > 0 && (
+                <Badge
+                  variant="destructive"
+                  className="h-5 min-w-5 px-1.5 text-[0.6rem] flex items-center justify-center rounded-full animate-pulse"
+                >
+                  {pendingCount}
+                </Badge>
+              )}
             </NavLink>
           ))}
+
+          {/* ── Offline Queue Button (visible when pending > 0) ── */}
+          {pendingCount > 0 && (
+            <>
+              <Separator className="my-2" />
+              <button
+                onClick={() => setDrawerOpen(true)}
+                className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm w-full text-left transition-all duration-200 text-amber-600 dark:text-amber-400 hover:bg-amber-500/10 group"
+              >
+                <UploadCloud className="h-4 w-4 shrink-0" />
+                <span className="flex-1">{t("offline.viewQueuedActions")}</span>
+                <Badge
+                  variant="outline"
+                  className="h-5 min-w-5 px-1.5 text-[0.6rem] border-amber-500/30 text-amber-600 dark:text-amber-400"
+                >
+                  {pendingCount}
+                </Badge>
+              </button>
+            </>
+          )}
         </nav>
 
         <Separator />
@@ -154,6 +211,17 @@ export function AdminLayout() {
 
           <div className="flex-1" />
 
+          {/* Pending actions indicator in top bar (mobile) */}
+          {pendingCount > 0 && (
+            <button
+              onClick={() => setDrawerOpen(true)}
+              className="flex items-center gap-1.5 rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-400 px-3 py-1.5 text-xs font-medium hover:bg-amber-500/20 transition-colors"
+            >
+              <UploadCloud className="h-3.5 w-3.5" />
+              <span>{pendingCount}</span>
+            </button>
+          )}
+
           <LocaleSwitcher />
           <ThemeToggle />
         </header>
@@ -163,6 +231,17 @@ export function AdminLayout() {
           <Outlet />
         </main>
       </div>
+
+      {/* Offline Queue Drawer */}
+      <OfflineQueueDrawer
+        open={drawerOpen}
+        onOpenChange={setDrawerOpen}
+        isOnline={isOnline}
+        accessToken={session?.access_token}
+        onReplayComplete={() => {
+          setPendingCount(getPendingCount());
+        }}
+      />
     </div>
   );
 }

@@ -17,13 +17,38 @@
  *   business_hours:{loc_id}      → BusinessHours record
  *   business_owner:{biz_id}      → owner auth UID
  *   whatsapp_settings:{biz_id}   → WhatsApp config
+ *   location_sessions:{loc_id}  → string[] of session IDs (for lifecycle tracking)
+ *   queue_session_today:{qt_id}:{date} → session ID for today's session
+ *   session_entries:{session_id}→ string[] of entry IDs
+ *   location_entries:{loc_id}   → string[] of entry IDs
+ *   queue_lock:{sid}:{qtid}     → Lock record (distributed mutex)
+ *   next_entry:{sid}:{qtid}     → entry ID of current NEXT
+ *   customer_entries:{auth_uid} → string[] of entry IDs (retention analytics)
+ *
+ * ─── Analytics Computed Metrics ───
+ *   The advanced analytics endpoint (/analytics/advanced/:locationId)
+ *   computes all metrics from location_entries and queue_entry records:
+ *   - KPIs with % change vs previous period
+ *   - Queue Health Score (0-100): wait factor (40%), no-show factor (30%), load factor (30%)
+ *   - Staff Performance Leaderboard with efficiency scores
+ *   - Hourly Heatmap (Day of Week x Hour matrix)
+ *   - Service Type Analysis (avg wait/service per queue_type)
+ *   - 30-Day Trend with 7-Day Simple Moving Average
+ *   - Predictive Trend Direction (up/stable/down)
+ *
+ * ─── Session Status Lifecycle ───
+ *   OPEN → CLOSED → ARCHIVED
+ *   - Auto-created as OPEN on first join (if within business hours)
+ *   - Auto-closed at business closing time (WAITING→CANCELLED)
+ *   - Archived after 30 days
  *
  * ─── Production SQL Schema ───
  *
  * -- Enum types
  * CREATE TYPE user_role AS ENUM ('owner', 'admin', 'staff');
  * CREATE TYPE entity_status AS ENUM ('active', 'inactive', 'archived');
- * CREATE TYPE queue_entry_status AS ENUM ('waiting', 'serving', 'served', 'cancelled', 'no_show');
+ * CREATE TYPE queue_entry_status AS ENUM ('waiting', 'next', 'serving', 'served', 'cancelled', 'no_show');
+ * CREATE TYPE session_status AS ENUM ('open', 'closed', 'archived');
  * CREATE TYPE notification_channel AS ENUM ('sms', 'whatsapp', 'email', 'push');
  *
  * -- Business (multi-tenant root)
@@ -115,9 +140,11 @@
  *   location_id UUID NOT NULL REFERENCES location(id),
  *   business_id UUID NOT NULL REFERENCES business(id),
  *   session_date DATE NOT NULL DEFAULT CURRENT_DATE,
- *   status entity_status DEFAULT 'active',
+ *   status session_status DEFAULT 'open',
  *   current_number INT DEFAULT 0,
  *   last_called_number INT DEFAULT 0,
+ *   closed_at TIMESTAMPTZ,
+ *   archived_at TIMESTAMPTZ,
  *   created_at TIMESTAMPTZ DEFAULT now(),
  *   updated_at TIMESTAMPTZ DEFAULT now(),
  *   UNIQUE(queue_type_id, session_date)
@@ -224,7 +251,8 @@
 
 export type EntityStatus = "active" | "inactive" | "archived";
 export type UserRole = "owner" | "admin" | "staff";
-export type QueueEntryStatus = "waiting" | "serving" | "served" | "cancelled" | "no_show";
+export type QueueEntryStatus = "waiting" | "next" | "serving" | "served" | "cancelled" | "no_show";
+export type SessionStatus = "open" | "closed" | "archived";
 export type NotificationChannel = "sms" | "whatsapp" | "email" | "push";
 
 export interface Business {
@@ -297,11 +325,21 @@ export interface QueueSession {
   location_id: string;
   business_id: string;
   session_date: string;
-  status: EntityStatus;
+  status: SessionStatus;
   current_number: number;
   last_called_number: number;
+  closed_at?: string;
+  archived_at?: string;
   created_at: string;
   updated_at: string;
+}
+
+export interface BusinessHoursCheck {
+  isOpen: boolean;
+  reason?: string;
+  opensAt?: string;
+  closesAt?: string;
+  daySchedule?: any;
 }
 
 export interface QueueEntry {

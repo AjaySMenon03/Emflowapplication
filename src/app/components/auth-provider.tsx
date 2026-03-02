@@ -22,14 +22,35 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // Bootstrap: always refresh to get a valid token
     async function bootstrap() {
       try {
+        // First check if there's an existing session at all.
+        // Calling refreshSession() without a stored refresh token throws
+        // "Invalid Refresh Token: Refresh Token Not Found".
+        const { data: existing } = await supabase.auth.getSession();
+
+        if (cancelled) return;
+
+        if (!existing?.session) {
+          // No session stored — user is not logged in, nothing to refresh
+          console.log("[AuthProvider] No stored session — user is signed out");
+          setAuth(null, null);
+          setRole(null, null, false);
+          return;
+        }
+
+        // Session exists — refresh it to guarantee a fresh access token
         const { data: refreshData, error: refreshError } =
           await supabase.auth.refreshSession();
 
         if (cancelled) return;
 
         if (refreshError || !refreshData?.session?.access_token) {
-          // No valid session at all — user is logged out
-          console.log("[AuthProvider] No valid session after refresh");
+          // Refresh failed — token may have been revoked server-side
+          console.log(
+            "[AuthProvider] Session refresh failed, signing out:",
+            refreshError?.message
+          );
+          // Clean up the stale session so the error doesn't repeat
+          await supabase.auth.signOut({ scope: "local" }).catch(() => {});
           setAuth(null, null);
           setRole(null, null, false);
           return;
@@ -38,9 +59,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const session = refreshData.session;
         setAuth(session.user, session);
         await checkRole(session.access_token);
-      } catch (err) {
-        console.warn("[AuthProvider] Bootstrap error:", err);
+      } catch (err: any) {
+        console.warn("[AuthProvider] Bootstrap error:", err?.message || err);
         if (!cancelled) {
+          // Clean up whatever stale state caused the crash
+          await supabase.auth.signOut({ scope: "local" }).catch(() => {});
           setAuth(null, null);
           setRole(null, null, false);
         }

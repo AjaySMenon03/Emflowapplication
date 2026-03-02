@@ -3,11 +3,13 @@
  */
 import { Link } from "react-router";
 import { useLocaleStore } from "../../stores/locale-store";
+import { useAuthStore } from "../../stores/auth-store";
 import { Button } from "../../components/ui/button";
-import { Zap, ArrowRight, Users, Globe, Bell } from "lucide-react";
+import { Zap, ArrowRight, Users, Globe, Bell, LayoutDashboard } from "lucide-react";
 
 export function HomePage() {
   const { t } = useLocaleStore();
+  const { isAuthenticated, role } = useAuthStore();
 
   const features = [
     {
@@ -43,12 +45,21 @@ export function HomePage() {
       </div>
 
       <div className="flex flex-wrap items-center justify-center gap-3">
-        <Button asChild size="lg" className="gap-2 font-semibold">
-          <Link to="/login">
-            {t("landing.getStarted")}
-            <ArrowRight className="h-4 w-4" />
-          </Link>
-        </Button>
+        {isAuthenticated && (role === "customer" || !role) ? (
+          <Button asChild size="lg" className="gap-2 font-semibold">
+            <Link to="/customer">
+              <LayoutDashboard className="h-4 w-4" />
+              {t("customer.dashboard")}
+            </Link>
+          </Button>
+        ) : (
+          <Button asChild size="lg" className="gap-2 font-semibold">
+            <Link to="/login">
+              {t("landing.getStarted")}
+              <ArrowRight className="h-4 w-4" />
+            </Link>
+          </Button>
+        )}
         <Button variant="outline" size="lg" asChild>
           <Link to="/kiosk">{t("landing.kioskMode")}</Link>
         </Button>

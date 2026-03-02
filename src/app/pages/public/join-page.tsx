@@ -11,6 +11,8 @@ import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router";
 import { api } from "../../lib/api";
 import { useLocaleStore, type Locale, LOCALE_LABELS } from "../../stores/locale-store";
+import { useAuthStore } from "../../stores/auth-store";
+import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
@@ -37,6 +39,10 @@ import {
   Ticket,
   Globe,
   CheckCircle2,
+  UserCheck,
+  LogIn,
+  AlertTriangle,
+  Megaphone,
 } from "lucide-react";
 
 interface QueueTypeInfo {
@@ -58,6 +64,7 @@ export function JoinPage() {
   const { locationSlug } = useParams<{ locationSlug: string }>();
   const navigate = useNavigate();
   const { locale, setLocale, t } = useLocaleStore();
+  const { user, session, isAuthenticated } = useAuthStore();
 
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -69,11 +76,40 @@ export function JoinPage() {
   const [isOpen, setIsOpen] = useState<boolean | null>(null);
   const [todayHours, setTodayHours] = useState<{ openTime: string; closeTime: string } | null>(null);
 
+  // Returning customer state
+  const [isReturning, setIsReturning] = useState(false);
+  const [autoFilled, setAutoFilled] = useState(false);
+  const [joinedEntryId, setJoinedEntryId] = useState<string | null>(null);
+
+  // Emergency state
+  const [queuePaused, setQueuePaused] = useState(false);
+  const [broadcastNotice, setBroadcastNotice] = useState<string | null>(null);
+
   // Form
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
   const [selectedQueueType, setSelectedQueueType] = useState("");
+
+  // Auto-fill from customer profile if authenticated
+  useEffect(() => {
+    async function checkAutofill() {
+      if (!isAuthenticated || !session?.access_token) return;
+      const { data } = await api<{
+        customer: { name: string; phone: string; email: string; preferred_language: string } | null;
+        isReturning: boolean;
+      }>("/customer/autofill", { accessToken: session.access_token });
+
+      if (data?.customer) {
+        if (data.customer.name && !name) setName(data.customer.name);
+        if (data.customer.phone && !phone) setPhone(data.customer.phone);
+        if (data.customer.email && !email) setEmail(data.customer.email);
+        setIsReturning(data.isReturning);
+        setAutoFilled(true);
+      }
+    }
+    checkAutofill();
+  }, [isAuthenticated, session?.access_token]);
 
   // Language auto-detection is handled by the locale store on init
 
@@ -106,9 +142,14 @@ export function JoinPage() {
 
       // Fetch business hours for open/closed status
       if (data.location?.id) {
-        const hoursRes = await api<{ hours: any; isOpen: boolean; today: string }>(
-          `/public/business-hours/${data.location.id}`
-        );
+        const [hoursRes, emergencyRes] = await Promise.all([
+          api<{ hours: any; isOpen: boolean; today: string }>(
+            `/public/business-hours/${data.location.id}`
+          ),
+          api<{ paused: boolean; broadcast: string | null }>(
+            `/public/emergency/${data.location.id}`
+          ),
+        ]);
         if (hoursRes.data) {
           setIsOpen(hoursRes.data.isOpen);
           const todayKey = hoursRes.data.today;
@@ -118,6 +159,10 @@ export function JoinPage() {
               closeTime: hoursRes.data.hours[todayKey].closeTime,
             });
           }
+        }
+        if (emergencyRes.data) {
+          setQueuePaused(emergencyRes.data.paused);
+          setBroadcastNotice(emergencyRes.data.broadcast);
         }
       }
     }
@@ -154,6 +199,8 @@ export function JoinPage() {
           email: email.trim() || null,
           locale,
         },
+        // Pass access token if authenticated so entries are linked to customer account
+        accessToken: session?.access_token || undefined,
       });
 
       if (apiErr || !data) {
@@ -280,6 +327,57 @@ export function JoinPage() {
           </div>
         )}
 
+        {/* Queue paused warning */}
+        {queuePaused && (
+          <div className="mb-4 rounded-lg border-2 border-red-300 dark:border-red-700 bg-red-50 dark:bg-red-950/30 px-4 py-4 text-center">
+            <div className="flex items-center justify-center gap-2 mb-1.5">
+              <AlertTriangle className="h-5 w-5 text-red-600 dark:text-red-400" />
+              <span className="font-semibold text-red-700 dark:text-red-300 text-sm">
+                {t("emergency.joinPausedTitle")}
+              </span>
+            </div>
+            <p className="text-sm text-red-600 dark:text-red-400">
+              {t("emergency.joinPausedMessage")}
+            </p>
+          </div>
+        )}
+
+        {/* Broadcast notice */}
+        {broadcastNotice && (
+          <div className="mb-4 rounded-lg border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-950/30 px-4 py-3">
+            <div className="flex items-start gap-2.5">
+              <Megaphone className="h-4 w-4 text-blue-600 dark:text-blue-400 shrink-0 mt-0.5" />
+              <div>
+                <span className="text-xs font-semibold text-blue-700 dark:text-blue-300 uppercase tracking-wide">
+                  {t("emergency.noticeLabel")}
+                </span>
+                <p className="text-sm text-blue-700 dark:text-blue-300 mt-0.5">
+                  {broadcastNotice}
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Returning customer welcome */}
+        {isReturning && autoFilled && (
+          <div className="mb-4 rounded-lg border border-emerald-200 dark:border-emerald-800 bg-gradient-to-r from-emerald-50 to-teal-50 dark:from-emerald-950/30 dark:to-teal-950/30 px-4 py-3">
+            <div className="flex items-center gap-3">
+              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-emerald-100 dark:bg-emerald-900/50 shrink-0">
+                <UserCheck className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+              </div>
+              <div>
+                <p className="text-sm font-medium text-emerald-800 dark:text-emerald-300">
+                  {t("customer.welcomeBackJoin")}
+                </p>
+                <p className="text-xs text-emerald-600 dark:text-emerald-400">
+                  {t("customer.autoFilled")}
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Error */}
         {error && (
           <div className="mb-4 rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3">
@@ -395,7 +493,7 @@ export function JoinPage() {
           <Button
             type="submit"
             className="w-full h-12 text-base"
-            disabled={submitting || !selectedQueueType || !name.trim()}
+            disabled={submitting || !selectedQueueType || !name.trim() || queuePaused}
           >
             {submitting ? (
               <Loader2 className="mr-2 h-5 w-5 animate-spin" />

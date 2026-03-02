@@ -15,6 +15,10 @@ import { api } from "../../lib/api";
 import { useRealtimePublic } from "../../lib/use-realtime";
 import { useLocaleStore, type Locale, LOCALE_LABELS } from "../../stores/locale-store";
 import { usePushNotifications } from "../../lib/use-pwa";
+import { useNetworkStatus, cacheSet, cacheGet } from "../../lib/use-network-status";
+import { OfflineBanner } from "../../components/offline-banner";
+import { enqueue } from "../../lib/offline-queue";
+import { toast } from "sonner";
 import { Button } from "../../components/ui/button";
 import {
   Card,
@@ -45,6 +49,7 @@ import {
   BellOff,
   Wifi,
   WifiOff,
+  Megaphone,
 } from "lucide-react";
 
 interface StatusData {
@@ -82,6 +87,13 @@ const STATUS_CONFIG: Record<
     title: "You're in the queue",
     message: "Please stay nearby. We'll update your status in real-time.",
   },
+  next: {
+    color: "text-amber-600 dark:text-amber-400",
+    bg: "bg-amber-500/10",
+    icon: PartyPopper,
+    title: "You've been called!",
+    message: "Please proceed to the service counter — you're next in line.",
+  },
   serving: {
     color: "text-emerald-600 dark:text-emerald-400",
     bg: "bg-emerald-500/10",
@@ -114,7 +126,7 @@ const STATUS_CONFIG: Record<
 
 export function StatusPage() {
   const { entryId } = useParams<{ entryId: string }>();
-  const { locale, setLocale } = useLocaleStore();
+  const { locale, setLocale, t } = useLocaleStore();
   const { showNotification, permission, requestPermission } = usePushNotifications();
 
   const [data, setData] = useState<StatusData | null>(null);
@@ -123,6 +135,35 @@ export function StatusPage() {
   const [error, setError] = useState("");
   const [copied, setCopied] = useState(false);
   const prevStatusRef = useRef<string | null>(null);
+
+  // Emergency broadcast state
+  const [broadcastNotice, setBroadcastNotice] = useState<string | null>(null);
+
+  // ── Offline Resilience ──
+  const STATUS_CACHE_KEY = `customer-status:${entryId}`;
+  const { isOnline, isReconnecting, lastSyncedAt, markSynced } = useNetworkStatus({
+    onReconnect: () => {
+      fetchStatus();
+    },
+  });
+
+  // Cache status data when online
+  useEffect(() => {
+    if (data && isOnline) {
+      cacheSet(STATUS_CACHE_KEY, data);
+    }
+  }, [data, isOnline]);
+
+  // Restore from cache on mount if offline
+  useEffect(() => {
+    if (!isOnline && !data && entryId) {
+      const cached = cacheGet<StatusData>(STATUS_CACHE_KEY);
+      if (cached?.data) {
+        setData(cached.data);
+        setLoading(false);
+      }
+    }
+  }, [isOnline, entryId]);
 
   const fetchStatus = useCallback(async () => {
     if (!entryId) return;
@@ -139,9 +180,16 @@ export function StatusPage() {
       const prevStatus = prevStatusRef.current;
       const newStatus = statusData.entry.status;
       if (prevStatus && prevStatus !== newStatus) {
-        if (newStatus === "serving") {
+        if (newStatus === "next") {
+          showNotification("📢 You've been called!", {
+            body: `Ticket ${statusData.entry.ticket_number} — Please proceed to the counter.`,
+            tag: "your-turn",
+            data: { entryId, url: window.location.href },
+            requireInteraction: true,
+          });
+        } else if (newStatus === "serving") {
           showNotification("🎉 It's your turn!", {
-            body: `Ticket ${statusData.entry.ticket_number} — Please proceed to the counter now.`,
+            body: `Ticket ${statusData.entry.ticket_number} — You're now being served.`,
             tag: "your-turn",
             data: { entryId, url: window.location.href },
             requireInteraction: true,
@@ -157,12 +205,23 @@ export function StatusPage() {
 
       setData(statusData);
       setError("");
+      markSynced();
+
+      // Fetch emergency broadcast for this location
+      if (statusData.entry.location_id) {
+        const { data: emergencyData } = await api<{ paused: boolean; broadcast: string | null }>(
+          `/public/emergency/${statusData.entry.location_id}`
+        );
+        if (emergencyData) {
+          setBroadcastNotice(emergencyData.broadcast);
+        }
+      }
     } catch {
       if (!data) setError("Failed to load status");
     } finally {
       setLoading(false);
     }
-  }, [entryId, showNotification]);
+  }, [entryId, showNotification, markSynced]);
 
   // Initial load
   useEffect(() => {
@@ -177,6 +236,22 @@ export function StatusPage() {
   const handleCancel = async () => {
     if (!entryId) return;
     setCancelling(true);
+
+    // If offline → enqueue + optimistic UI
+    if (!isOnline) {
+      enqueue(`/public/queue/cancel/${entryId}`, {
+        method: "POST",
+        label: `Cancel ticket ${data?.entry?.ticket_number || entryId}`,
+      });
+      // Optimistic: update local state to show cancelled
+      if (data) {
+        setData({ ...data, entry: { ...data.entry, status: "cancelled" } });
+      }
+      toast.info(t("offline.actionQueued"));
+      setCancelling(false);
+      return;
+    }
+
     try {
       const { error: apiErr } = await api(
         `/public/queue/cancel/${entryId}`,
@@ -248,7 +323,7 @@ export function StatusPage() {
   const status = data.entry.status;
   const config = STATUS_CONFIG[status] || STATUS_CONFIG.waiting;
   const StatusIcon = config.icon;
-  const isActive = status === "waiting" || status === "serving";
+  const isActive = status === "waiting" || status === "next" || status === "serving";
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-primary/5 to-background">
@@ -282,10 +357,30 @@ export function StatusPage() {
       </div>
 
       <div className="mx-auto max-w-lg px-4 py-6 sm:py-10 space-y-5">
+        {/* Offline Banner */}
+        <OfflineBanner isOnline={isOnline} isReconnecting={isReconnecting} lastSyncedAt={lastSyncedAt} />
+
         {/* Error banner */}
         {error && (
           <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3">
             <p className="text-destructive text-sm">{error}</p>
+          </div>
+        )}
+
+        {/* Broadcast notice */}
+        {broadcastNotice && (
+          <div className="rounded-lg border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-950/30 px-4 py-3">
+            <div className="flex items-start gap-2.5">
+              <Megaphone className="h-4 w-4 text-blue-600 dark:text-blue-400 shrink-0 mt-0.5" />
+              <div>
+                <span className="text-xs font-semibold text-blue-700 dark:text-blue-300 uppercase tracking-wide">
+                  {t("emergency.noticeLabel")}
+                </span>
+                <p className="text-sm text-blue-700 dark:text-blue-300 mt-0.5">
+                  {broadcastNotice}
+                </p>
+              </div>
+            </div>
           </div>
         )}
 
@@ -317,7 +412,7 @@ export function StatusPage() {
                     <span className="text-xs uppercase tracking-wider">Position</span>
                   </div>
                   <p className="text-3xl font-bold text-foreground">
-                    {status === "serving" ? "Now" : `#${data.position}`}
+                    {(status === "serving" || status === "next") ? "Next!" : `#${data.position}`}
                   </p>
                   {status === "waiting" && (
                     <p className="text-xs text-muted-foreground mt-0.5">
@@ -331,7 +426,7 @@ export function StatusPage() {
                     <span className="text-xs uppercase tracking-wider">Est. Wait</span>
                   </div>
                   <p className="text-3xl font-bold text-foreground">
-                    {status === "serving" ? "0" : data.estimatedMinutes}
+                    {(status === "serving" || status === "next") ? "0" : data.estimatedMinutes}
                   </p>
                   <p className="text-xs text-muted-foreground mt-0.5">
                     minutes

@@ -39,9 +39,30 @@ export async function api<T = unknown>(
     if (res.status === 401 && !_isRetry && accessToken) {
       console.log(`[API ${method} ${path}] 401 — attempting session refresh & retry`);
       try {
-        const { data: refreshData } = await supabase.auth.refreshSession();
-        const newToken = refreshData?.session?.access_token;
+        // Guard: only refresh if a session actually exists in storage.
+        // Without this check, refreshSession() throws
+        // "Invalid Refresh Token: Refresh Token Not Found".
+        const { data: existingSession } = await supabase.auth.getSession();
+        if (!existingSession?.session) {
+          console.log(`[API ${method} ${path}] No stored session — skipping refresh`);
+          // Force sign-out to clean up stale auth store state
+          const store = useAuthStore.getState();
+          store.clear();
+          return { data: null, error: "Session expired — please sign in again" };
+        }
 
+        const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession();
+
+        if (refreshError) {
+          console.warn(`[API ${method} ${path}] Session refresh failed:`, refreshError.message);
+          // Stale/revoked token — clear local state so user is redirected to login
+          await supabase.auth.signOut({ scope: "local" }).catch(() => {});
+          const store = useAuthStore.getState();
+          store.clear();
+          return { data: null, error: "Session expired — please sign in again" };
+        }
+
+        const newToken = refreshData?.session?.access_token;
         if (newToken && newToken !== accessToken) {
           // Update Zustand store with refreshed session
           const store = useAuthStore.getState();
@@ -58,7 +79,7 @@ export async function api<T = unknown>(
           });
         }
       } catch (refreshErr) {
-        console.warn(`[API ${method} ${path}] Session refresh failed:`, refreshErr);
+        console.warn(`[API ${method} ${path}] Session refresh error:`, refreshErr);
       }
     }
 

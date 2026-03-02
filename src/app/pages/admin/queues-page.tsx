@@ -20,6 +20,12 @@ import { useLocaleStore } from "../../stores/locale-store";
 import { useAuthStore } from "../../stores/auth-store";
 import { api } from "../../lib/api";
 import { useRealtime } from "../../lib/use-realtime";
+import { useNetworkStatus, cacheSet, cacheGet } from "../../lib/use-network-status";
+import { OfflineBanner } from "../../components/offline-banner";
+import { OfflineQueueDrawer } from "../../components/offline-queue-drawer";
+import { EmergencyControlsPanel } from "../../components/emergency-controls";
+import { enqueue, getPendingCount, replay } from "../../lib/offline-queue";
+import { toast } from "sonner";
 import {
   Card,
   CardContent,
@@ -75,6 +81,9 @@ import {
   ExternalLink,
   Hash,
   Phone,
+  PlayCircle,
+  SkipBack,
+  UploadCloud,
 } from "lucide-react";
 
 // ── Types ──
@@ -148,6 +157,7 @@ export function QueuesPage() {
   const [selectedQueueType, setSelectedQueueType] = useState("all");
 
   const [waiting, setWaiting] = useState<QueueEntry[]>([]);
+  const [nextEntries, setNextEntries] = useState<QueueEntry[]>([]);
   const [serving, setServing] = useState<QueueEntry[]>([]);
   const [completed, setCompleted] = useState<QueueEntry[]>([]);
 
@@ -160,6 +170,73 @@ export function QueuesPage() {
 
   // Reassign dialog
   const [reassignEntry, setReassignEntry] = useState<QueueEntry | null>(null);
+
+  // ── Offline Queue Drawer ──
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [pendingCount, setPendingCount] = useState(() => getPendingCount());
+
+  // ── Offline Resilience ──
+  const CACHE_KEY = `staff-queue:${selectedLocation}`;
+  const { isOnline, isReconnecting, lastSyncedAt, markSynced } = useNetworkStatus({
+    onReconnect: async () => {
+      // Replay any queued mutations first, then refresh
+      if (accessToken) {
+        const pending = getPendingCount();
+        if (pending > 0) {
+          const result = await replay(accessToken);
+          if (result.succeeded > 0) {
+            toast.success(
+              t("offline.replaySuccess").replace("{succeeded}", String(result.succeeded))
+            );
+          }
+          if (result.failed > 0) {
+            toast.error(
+              t("offline.replayPartial")
+                .replace("{succeeded}", String(result.succeeded))
+                .replace("{total}", String(result.total))
+                .replace("{failed}", String(result.failed))
+            );
+          }
+        }
+      }
+      fetchEntries();
+    },
+  });
+
+  // Refresh pending count whenever drawer state or online state changes
+  useEffect(() => {
+    setPendingCount(getPendingCount());
+  }, [drawerOpen, isOnline]);
+
+  // Cache entries whenever they update (and we're online)
+  useEffect(() => {
+    if (!selectedLocation || !isOnline) return;
+    if (waiting.length || nextEntries.length || serving.length || completed.length) {
+      cacheSet(CACHE_KEY, { waiting, next: nextEntries, serving, completed });
+    }
+  }, [waiting, nextEntries, serving, completed, selectedLocation, isOnline]);
+
+  // Restore from cache on initial load if offline
+  useEffect(() => {
+    if (!isOnline && selectedLocation && !waiting.length && !serving.length) {
+      const cached = cacheGet<{ waiting: QueueEntry[]; next: QueueEntry[]; serving: QueueEntry[]; completed: QueueEntry[] }>(CACHE_KEY);
+      if (cached?.data) {
+        setWaiting(cached.data.waiting || []);
+        setNextEntries(cached.data.next || []);
+        setServing(cached.data.serving || []);
+        setCompleted(cached.data.completed || []);
+      }
+    }
+  }, [isOnline, selectedLocation]);
+
+  // Block mutations when offline
+  const guardOnline = (action: string): boolean => {
+    if (!isOnline) {
+      toast.error(t("offline.mutationBlocked"));
+      return false;
+    }
+    return true;
+  };
 
   // ── Load locations ──
   useEffect(() => {
@@ -205,6 +282,7 @@ export function QueuesPage() {
     if (!selectedLocation || !accessToken) return;
     const { data, error: apiErr } = await api<{
       waiting: QueueEntry[];
+      next: QueueEntry[];
       serving: QueueEntry[];
       completed: QueueEntry[];
     }>(`/queue/entries/${selectedLocation}`, { accessToken });
@@ -214,12 +292,14 @@ export function QueuesPage() {
       return;
     }
     if (data) {
-      setWaiting(data.waiting);
-      setServing(data.serving);
-      setCompleted(data.completed);
+      setWaiting(data.waiting || []);
+      setNextEntries(data.next || []);
+      setServing(data.serving || []);
+      setCompleted(data.completed || []);
       setError("");
+      markSynced();
     }
-  }, [selectedLocation, accessToken]);
+  }, [selectedLocation, accessToken, markSynced]);
 
   useEffect(() => {
     fetchEntries();
@@ -243,7 +323,7 @@ export function QueuesPage() {
   // ══════════════════════════════════════════════
 
   const handleCallNext = async (queueTypeId: string) => {
-    if (!accessToken) return;
+    if (!accessToken || !guardOnline("call next")) return;
     setActionLoading(`call-${queueTypeId}`);
     setError("");
 
@@ -280,7 +360,14 @@ export function QueuesPage() {
       setError(apiErr);
     } else if (data?.entry) {
       setWaiting((prev) => prev.filter((e) => e.id !== data.entry!.id));
-      setServing((prev) => [data.entry!, ...prev]);
+      // callNext now returns status "next", move previous NEXT back to waiting
+      setNextEntries((prev) => {
+        const demoted = prev.filter((e) => e.queue_type_id === data.entry!.queue_type_id);
+        if (demoted.length > 0) {
+          setWaiting((w) => [...demoted.map((e) => ({ ...e, status: "waiting" })), ...w]);
+        }
+        return [data.entry!, ...prev.filter((e) => e.queue_type_id !== data.entry!.queue_type_id)];
+      });
       setSuccessMsg(`Called ${data.entry.ticket_number}`);
     } else {
       setError(data?.message || "No customers waiting");
@@ -288,13 +375,61 @@ export function QueuesPage() {
     setActionLoading(null);
   };
 
+  const handleStartServing = async (entryId: string) => {
+    if (!accessToken) return;
+    setActionLoading(`start-${entryId}`);
+    const entry = nextEntries.find((e) => e.id === entryId);
+    // Optimistic UI
+    if (entry) {
+      setNextEntries((prev) => prev.filter((e) => e.id !== entryId));
+      setServing((prev) => [{ ...entry, status: "serving" }, ...prev]);
+    }
+    // If offline → enqueue + toast
+    if (!isOnline) {
+      enqueue(`/queue/start-serving/${entryId}`, {
+        method: "POST",
+        label: `Start serving ${entry?.ticket_number || entryId}`,
+      });
+      toast.info(t("offline.actionQueued"));
+      setPendingCount(getPendingCount());
+      setActionLoading(null);
+      return;
+    }
+    const { error: apiErr } = await api(`/queue/start-serving/${entryId}`, {
+      method: "POST",
+      accessToken,
+    });
+    if (apiErr) {
+      setError(apiErr);
+      await fetchEntries();
+    } else {
+      setSuccessMsg(`${entry?.ticket_number} now being served`);
+    }
+    setActionLoading(null);
+  };
+
   const handleMarkServed = async (entryId: string) => {
     if (!accessToken) return;
     setActionLoading(`served-${entryId}`);
-    const entry = serving.find((e) => e.id === entryId);
+    const entry =
+      nextEntries.find((e) => e.id === entryId) ||
+      serving.find((e) => e.id === entryId);
+    // Optimistic UI
     if (entry) {
+      setNextEntries((prev) => prev.filter((e) => e.id !== entryId));
       setServing((prev) => prev.filter((e) => e.id !== entryId));
       setCompleted((prev) => [{ ...entry, status: "served" }, ...prev]);
+    }
+    // If offline → enqueue + toast
+    if (!isOnline) {
+      enqueue(`/queue/mark-served/${entryId}`, {
+        method: "POST",
+        label: `Mark served ${entry?.ticket_number || entryId}`,
+      });
+      toast.info(t("offline.actionQueued"));
+      setPendingCount(getPendingCount());
+      setActionLoading(null);
+      return;
     }
     const { error: apiErr } = await api(`/queue/mark-served/${entryId}`, {
       method: "POST",
@@ -314,11 +449,25 @@ export function QueuesPage() {
     setActionLoading(`noshow-${entryId}`);
     const entry =
       waiting.find((e) => e.id === entryId) ||
+      nextEntries.find((e) => e.id === entryId) ||
       serving.find((e) => e.id === entryId);
+    // Optimistic UI
     if (entry) {
       setWaiting((prev) => prev.filter((e) => e.id !== entryId));
+      setNextEntries((prev) => prev.filter((e) => e.id !== entryId));
       setServing((prev) => prev.filter((e) => e.id !== entryId));
       setCompleted((prev) => [{ ...entry, status: "no_show" }, ...prev]);
+    }
+    // If offline → enqueue + toast
+    if (!isOnline) {
+      enqueue(`/queue/mark-noshow/${entryId}`, {
+        method: "POST",
+        label: `Mark no-show ${entry?.ticket_number || entryId}`,
+      });
+      toast.info(t("offline.actionQueued"));
+      setPendingCount(getPendingCount());
+      setActionLoading(null);
+      return;
     }
     const { error: apiErr } = await api(`/queue/mark-noshow/${entryId}`, {
       method: "POST",
@@ -334,7 +483,7 @@ export function QueuesPage() {
   };
 
   const handleMove = async (entryId: string, direction: "up" | "down") => {
-    if (!accessToken || !canReorder(myRole)) return;
+    if (!accessToken || !canReorder(myRole) || !guardOnline("reorder")) return;
     setActionLoading(`move-${entryId}`);
     const filtered = filterByType(waiting);
     const idx = filtered.findIndex((e) => e.id === entryId);
@@ -351,7 +500,7 @@ export function QueuesPage() {
   };
 
   const handleReassign = async (newStaffId: string) => {
-    if (!accessToken || !reassignEntry || !canReassign(myRole)) return;
+    if (!accessToken || !reassignEntry || !canReassign(myRole) || !guardOnline("reassign")) return;
     setActionLoading(`reassign-${reassignEntry.id}`);
     const { error: apiErr } = await api(
       `/queue/reassign/${reassignEntry.id}`,
@@ -379,6 +528,53 @@ export function QueuesPage() {
     setTimeout(() => setCopiedSlug(false), 2000);
   };
 
+  const handleMarkPreviousServed = async (queueTypeId: string) => {
+    if (!accessToken || !guardOnline("mark previous served")) return;
+    setActionLoading(`prev-${queueTypeId}`);
+    setError("");
+
+    const location = locations.find((l) => l.id === selectedLocation);
+    const { data: sessionData } = await api<{ session: { id: string } }>(
+      "/queue/session",
+      {
+        method: "POST",
+        accessToken,
+        body: {
+          queueTypeId,
+          locationId: selectedLocation,
+          businessId: location?.business_id || businessId,
+        },
+      }
+    );
+
+    if (!sessionData?.session?.id) {
+      setError("Failed to get queue session");
+      setActionLoading(null);
+      return;
+    }
+
+    const { data, error: apiErr } = await api<{
+      entry: QueueEntry | null;
+      message?: string;
+    }>("/queue/mark-previous-served", {
+      method: "POST",
+      accessToken,
+      body: { queueTypeId, sessionId: sessionData.session.id },
+    });
+
+    if (apiErr) {
+      setError(apiErr);
+    } else if (data?.entry) {
+      setNextEntries((prev) => prev.filter((e) => e.id !== data.entry!.id));
+      setServing((prev) => prev.filter((e) => e.id !== data.entry!.id));
+      setCompleted((prev) => [{ ...data.entry!, status: "served" }, ...prev]);
+      setSuccessMsg(`${data.entry.ticket_number} marked served (previous)`);
+    } else {
+      setError(data?.message || "No previous entry to mark as served");
+    }
+    setActionLoading(null);
+  };
+
   const filterByType = (entries: QueueEntry[]) =>
     selectedQueueType === "all"
       ? entries
@@ -404,6 +600,9 @@ export function QueuesPage() {
   return (
     <TooltipProvider delayDuration={300}>
       <div className="space-y-4 animate-fade-in">
+        {/* ── Offline Banner ── */}
+        <OfflineBanner isOnline={isOnline} isReconnecting={isReconnecting} lastSyncedAt={lastSyncedAt} pendingCount={pendingCount} />
+
         {/* ── Header ── */}
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
@@ -499,6 +698,15 @@ export function QueuesPage() {
           </CardContent>
         </Card>
 
+        {/* ── Emergency Controls (owner only) ── */}
+        {myRole === "owner" && selectedLocation && accessToken && (
+          <EmergencyControlsPanel
+            locationId={selectedLocation}
+            accessToken={accessToken}
+            onStateChange={fetchEntries}
+          />
+        )}
+
         {/* ── Messages ── */}
         {error && (
           <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-2.5 flex items-center gap-2">
@@ -526,20 +734,40 @@ export function QueuesPage() {
               ? queueTypes
               : queueTypes.filter((q) => q.id === selectedQueueType)
             ).map((qt) => (
-              <Button
-                key={qt.id}
-                onClick={() => handleCallNext(qt.id)}
-                disabled={actionLoading === `call-${qt.id}`}
-                className="gap-1.5 font-semibold"
-                size="lg"
-              >
-                {actionLoading === `call-${qt.id}` ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <PhoneForwarded className="h-4 w-4" />
-                )}
-                Call Next [{qt.prefix}]
-              </Button>
+              <div key={qt.id} className="flex items-center gap-1.5">
+                <Button
+                  onClick={() => handleCallNext(qt.id)}
+                  disabled={actionLoading === `call-${qt.id}`}
+                  className="gap-1.5 font-semibold"
+                  size="lg"
+                >
+                  {actionLoading === `call-${qt.id}` ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <PhoneForwarded className="h-4 w-4" />
+                  )}
+                  Call Next [{qt.prefix}]
+                </Button>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="outline"
+                      size="lg"
+                      onClick={() => handleMarkPreviousServed(qt.id)}
+                      disabled={actionLoading === `prev-${qt.id}`}
+                      className="gap-1.5"
+                    >
+                      {actionLoading === `prev-${qt.id}` ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <SkipBack className="h-4 w-4" />
+                      )}
+                      <span className="hidden sm:inline">Mark Prev Served</span>
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>Mark the previous entry as served (if forgotten)</TooltipContent>
+                </Tooltip>
+              </div>
             ))}
           </div>
         )}
@@ -558,7 +786,7 @@ export function QueuesPage() {
               <PhoneForwarded className="h-3.5 w-3.5" />
               <span className="hidden sm:inline">Serving</span>
               <Badge variant="secondary" className="ml-0.5 h-5 min-w-5 px-1.5 text-[0.65rem]">
-                {filterByType(serving).length}
+                {filterByType(nextEntries).length + filterByType(serving).length}
               </Badge>
             </TabsTrigger>
             <TabsTrigger value="completed" className="gap-1.5 flex-1 sm:flex-initial">
@@ -647,7 +875,84 @@ export function QueuesPage() {
 
           {/* ── SERVING ── */}
           <TabsContent value="serving" className="mt-3 space-y-1.5">
-            {filterByType(serving).length === 0 ? (
+            {/* NEXT entries — called but not yet serving */}
+            {filterByType(nextEntries).length > 0 && (
+              <>
+                {filterByType(nextEntries).map((entry) => (
+                  <EntryCard
+                    key={entry.id}
+                    entry={entry}
+                    staffName={getStaffName(entry.served_by)}
+                    actions={
+                      <div className="flex items-center gap-1">
+                        {canReassign(myRole) && (
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                className="h-7 w-7"
+                                onClick={() => setReassignEntry(entry)}
+                              >
+                                <UserRoundCog className="h-3.5 w-3.5" />
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent>Reassign staff</TooltipContent>
+                          </Tooltip>
+                        )}
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => handleStartServing(entry.id)}
+                          disabled={actionLoading === `start-${entry.id}`}
+                          className="gap-1 font-medium border-primary text-primary hover:bg-primary/10"
+                        >
+                          {actionLoading === `start-${entry.id}` ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          ) : (
+                            <PlayCircle className="h-3.5 w-3.5" />
+                          )}
+                          Start Serving
+                        </Button>
+                        <Button
+                          size="sm"
+                          onClick={() => handleMarkServed(entry.id)}
+                          disabled={actionLoading === `served-${entry.id}`}
+                          className="gap-1 font-medium"
+                        >
+                          {actionLoading === `served-${entry.id}` ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          ) : (
+                            <CheckCircle2 className="h-3.5 w-3.5" />
+                          )}
+                          Done
+                        </Button>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              size="icon"
+                              variant="outline"
+                              className="h-8 w-8 text-destructive border-destructive/30"
+                              onClick={() => handleMarkNoShow(entry.id)}
+                              disabled={actionLoading === `noshow-${entry.id}`}
+                            >
+                              <AlertTriangle className="h-3.5 w-3.5" />
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent>No show</TooltipContent>
+                        </Tooltip>
+                      </div>
+                    }
+                  />
+                ))}
+                {filterByType(serving).length > 0 && (
+                  <Separator className="my-2" />
+                )}
+              </>
+            )}
+
+            {/* SERVING entries — actively being served */}
+            {filterByType(nextEntries).length === 0 && filterByType(serving).length === 0 ? (
               <EmptyState message="No one being served" />
             ) : (
               filterByType(serving).map((entry) => (
@@ -788,6 +1093,18 @@ export function QueuesPage() {
             </div>
           </DialogContent>
         </Dialog>
+
+        {/* ── Offline Queue Drawer ── */}
+        <OfflineQueueDrawer
+          open={drawerOpen}
+          onOpenChange={setDrawerOpen}
+          isOnline={isOnline}
+          accessToken={accessToken}
+          onReplayComplete={() => {
+            setPendingCount(getPendingCount());
+            fetchEntries();
+          }}
+        />
       </div>
     </TooltipProvider>
   );
@@ -815,6 +1132,7 @@ function EntryCard({
     { variant: "default" | "secondary" | "destructive" | "outline"; label: string; dotColor: string }
   > = {
     waiting: { variant: "outline", label: "Waiting", dotColor: "bg-blue-500" },
+    next: { variant: "default", label: "Called", dotColor: "bg-amber-500" },
     serving: { variant: "default", label: "Serving", dotColor: "bg-emerald-500" },
     served: { variant: "secondary", label: "Served", dotColor: "bg-gray-400" },
     no_show: { variant: "destructive", label: "No Show", dotColor: "bg-red-500" },

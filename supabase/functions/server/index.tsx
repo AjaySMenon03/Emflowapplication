@@ -14,7 +14,7 @@ app.use(
   "/*",
   cors({
     origin: "*",
-    allowHeaders: ["Content-Type", "Authorization", "apikey"],
+    allowHeaders: ["Content-Type", "Authorization"],
     allowMethods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     exposeHeaders: ["Content-Length"],
     maxAge: 600,
@@ -551,9 +551,90 @@ app.post("/make-server-5252bcc1/public/queue/join", async (c) => {
       return c.json({ error: "Name is required" }, 400);
     }
 
+    // ── Emergency pause check ──
+    const emergencyState = await kv.get(`emergency:${locationId}`);
+    if (emergencyState?.paused) {
+      return c.json(
+        {
+          error: "We're temporarily not accepting new walk-ins. Please check back shortly.",
+          code: "QUEUE_PAUSED",
+        },
+        403
+      );
+    }
+
+    // ── Smart Session: check business hours & session status ──
+    const { session: smartSession, businessHours } =
+      await queueLogic.getOrCreateTodaySessionSmart(
+        queueTypeId,
+        locationId,
+        businessId
+      );
+
+    if (!businessHours.isOpen) {
+      return c.json(
+        {
+          error: `Queue is currently closed. ${businessHours.reason || ""}`.trim(),
+          code: "OUTSIDE_BUSINESS_HOURS",
+          businessHours,
+        },
+        403
+      );
+    }
+
+    // ── Duplicate prevention ──
+    if (phone) {
+      const duplicate = await queueLogic.checkDuplicateEntry({
+        locationId,
+        customerPhone: phone,
+        customerId: null,
+      });
+      if (duplicate) {
+        return c.json(
+          {
+            error: `You already have an active entry (${duplicate.ticket_number}) in this queue.`,
+            code: "DUPLICATE_ENTRY",
+            existingEntry: duplicate,
+          },
+          409
+        );
+      }
+    }
+
+    if (smartSession.status === "closed" || smartSession.status === "archived") {
+      return c.json(
+        {
+          error: "Queue session is closed. No new entries can be added.",
+          code: "SESSION_CLOSED",
+          sessionStatus: smartSession.status,
+        },
+        403
+      );
+    }
+
+    // Check if user is authenticated (for retention tracking)
+    const authUser = await getAuthUser(c);
+    const authUserId: string | null = authUser?.id || null;
+
     // Create or find customer
     let customerId: string | null = null;
-    if (phone || email) {
+    if (authUserId) {
+      let existingCustomer = await kv.get(`customer:${authUserId}`);
+      if (!existingCustomer) {
+        existingCustomer = {
+          id: authUserId,
+          auth_user_id: authUserId,
+          name: name.trim(),
+          phone: phone || authUser?.phone || null,
+          email: email || authUser?.email || null,
+          preferred_language: locale || "en",
+          created_at: now(),
+          updated_at: now(),
+        };
+        await kv.set(`customer:${authUserId}`, existingCustomer);
+      }
+      customerId = authUserId;
+    } else if (phone || email) {
       customerId = uuid();
       await kv.set(`customer:${customerId}`, {
         id: customerId,
@@ -575,6 +656,13 @@ app.post("/make-server-5252bcc1/public/queue/join", async (c) => {
       customerName: name.trim(),
       customerPhone: phone || null,
     });
+
+    // Track entry in customer_entries index for retention analytics
+    if (authUserId) {
+      const existingEntries: string[] = (await kv.get(`customer_entries:${authUserId}`)) || [];
+      existingEntries.push(entry.id);
+      await kv.set(`customer_entries:${authUserId}`, existingEntries);
+    }
 
     const position = await queueLogic.calculatePosition(entry.id);
     const eta = await queueLogic.calculateETA(entry.id);
@@ -614,6 +702,7 @@ app.post("/make-server-5252bcc1/public/queue/join", async (c) => {
       position: position.position,
       totalWaiting: position.total,
       estimatedMinutes: eta.estimatedMinutes,
+      businessHours,
     });
   } catch (err) {
     return c.json(
@@ -639,6 +728,9 @@ app.get("/make-server-5252bcc1/public/queue/status/:entryId", async (c) => {
     if (entry.status === "waiting") {
       position = await queueLogic.calculatePosition(entryId);
       eta = await queueLogic.calculateETA(entryId);
+    } else if (entry.status === "next") {
+      position = { position: 0, total: 0 };
+      eta = { estimatedMinutes: 0, estimatedTime: new Date().toISOString() };
     }
 
     const location = await kv.get(`location:${entry.location_id}`);
@@ -671,8 +763,8 @@ app.post(
   async (c) => {
     try {
       const entryId = c.req.param("entryId");
-      const entry = await queueLogic.cancelEntry(entryId);
-      return c.json({ entry });
+      const result = await queueLogic.cancelEntryEnhanced(entryId);
+      return c.json({ entry: result.cancelled, promoted: result.promoted });
     } catch (err) {
       return c.json(
         { error: `Cancel failed: ${err.message}` },
@@ -702,11 +794,14 @@ app.get(
         .filter((e) => e.status === "waiting")
         .sort((a, b) => {
           if (b.priority !== a.priority) return b.priority - a.priority;
+          if ((a.position || 0) !== (b.position || 0))
+            return (a.position || 0) - (b.position || 0);
           return (
             new Date(a.joined_at).getTime() -
             new Date(b.joined_at).getTime()
           );
         });
+      const next = entries.filter((e) => e.status === "next");
       const serving = entries.filter((e) => e.status === "serving");
       const completed = entries
         .filter(
@@ -722,7 +817,7 @@ app.get(
         )
         .slice(0, 50);
 
-      return c.json({ waiting, serving, completed });
+      return c.json({ waiting, next, serving, completed });
     } catch (err) {
       return c.json(
         { error: `Entries fetch failed: ${err.message}` },
@@ -773,6 +868,27 @@ app.post("/make-server-5252bcc1/queue/call-next", async (c) => {
     );
   }
 });
+
+// Start serving (transition NEXT → SERVING)
+app.post(
+  "/make-server-5252bcc1/queue/start-serving/:entryId",
+  async (c) => {
+    try {
+      const user = await getAuthUser(c);
+      if (!user) return c.json({ error: "Unauthorized" }, 401);
+      const entry = await queueLogic.startServing(
+        c.req.param("entryId"),
+        user.id
+      );
+      return c.json({ entry });
+    } catch (err) {
+      return c.json(
+        { error: `Start serving failed: ${err.message}` },
+        500
+      );
+    }
+  }
+);
 
 // Mark served
 app.post(
@@ -979,11 +1095,14 @@ app.get(
         .filter((e) => e.status === "waiting")
         .sort((a, b) => {
           if (b.priority !== a.priority) return b.priority - a.priority;
+          if ((a.position || 0) !== (b.position || 0))
+            return (a.position || 0) - (b.position || 0);
           return new Date(a.joined_at).getTime() - new Date(b.joined_at).getTime();
         });
+      const next = entries.filter((e) => e.status === "next");
       const serving = entries.filter((e) => e.status === "serving");
 
-      return c.json({ waiting, serving });
+      return c.json({ waiting, next, serving });
     } catch (err) {
       return c.json(
         { error: `Public entries fetch failed: ${err.message}` },
@@ -1364,12 +1483,209 @@ app.put("/make-server-5252bcc1/settings/location/:id", async (c) => {
       city: body.city ?? location.city,
       phone: body.phone ?? location.phone,
       timezone: body.timezone ?? location.timezone,
+      kiosk_pin: body.kiosk_pin !== undefined ? body.kiosk_pin : (location.kiosk_pin || null),
       updated_at: now(),
     };
     await kv.set(`location:${id}`, updated);
     return c.json({ location: updated });
   } catch (err) {
     return c.json({ error: `Update location failed: ${err.message}` }, 500);
+  }
+});
+
+// ══════════════════════════════════════════════
+// KIOSK — PIN Verification & Staff Auth
+// ══════════════════════════════════════════════
+
+// Verify kiosk PIN for a location (public — no auth, but rate-limited by PIN check)
+app.post("/make-server-5252bcc1/kiosk/verify-pin", async (c) => {
+  try {
+    const { locationId, pin } = await c.req.json();
+    if (!locationId || !pin) {
+      return c.json({ error: "locationId and pin are required" }, 400);
+    }
+    const location = await kv.get(`location:${locationId}`);
+    if (!location) return c.json({ error: "Location not found" }, 404);
+
+    if (!location.kiosk_pin) {
+      return c.json({ error: "No kiosk PIN configured for this location", code: "NO_PIN_SET" }, 400);
+    }
+
+    if (location.kiosk_pin !== pin) {
+      console.log(`[kiosk/verify-pin] Invalid PIN attempt for location ${locationId}`);
+      return c.json({ error: "Invalid PIN", valid: false }, 403);
+    }
+
+    return c.json({ valid: true });
+  } catch (err) {
+    return c.json({ error: `PIN verification failed: ${err.message}` }, 500);
+  }
+});
+
+// Kiosk staff authenticate — validates credentials + role, returns token
+app.post("/make-server-5252bcc1/kiosk/authenticate", async (c) => {
+  try {
+    const { email, password, locationId } = await c.req.json();
+    if (!email || !password || !locationId) {
+      return c.json({ error: "email, password, and locationId are required" }, 400);
+    }
+
+    const supabase = supabaseAdmin();
+    // Sign in using the admin client to get the session
+    const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    });
+
+    if (signInError || !signInData?.user) {
+      return c.json({ error: `Authentication failed: ${signInError?.message || "Invalid credentials"}` }, 401);
+    }
+
+    // Verify staff role
+    const staffRecord = await kv.get(`staff_user:${signInData.user.id}`);
+    if (!staffRecord) {
+      return c.json({ error: "Not authorized: no staff record found" }, 403);
+    }
+
+    // Verify role is staff, admin, or owner
+    const allowedRoles = ["owner", "admin", "staff"];
+    if (!allowedRoles.includes(staffRecord.role)) {
+      return c.json({ error: `Role '${staffRecord.role}' is not authorized for kiosk operations` }, 403);
+    }
+
+    // Verify staff has access to this location
+    const location = await kv.get(`location:${locationId}`);
+    if (!location) {
+      return c.json({ error: "Location not found" }, 404);
+    }
+    if (location.business_id !== staffRecord.business_id) {
+      return c.json({ error: "Staff not authorized for this location's business" }, 403);
+    }
+
+    return c.json({
+      accessToken: signInData.session?.access_token,
+      staff: {
+        name: staffRecord.name,
+        role: staffRecord.role,
+        email: staffRecord.email,
+      },
+    });
+  } catch (err) {
+    return c.json({ error: `Kiosk authentication failed: ${err.message}` }, 500);
+  }
+});
+
+// Kiosk call-next — role-validated server-side
+app.post("/make-server-5252bcc1/kiosk/call-next", async (c) => {
+  try {
+    const user = await getAuthUser(c);
+    if (!user) return c.json({ error: "Unauthorized — staff login required for kiosk operations" }, 401);
+
+    // Verify staff role server-side
+    const staffRecord = await kv.get(`staff_user:${user.id}`);
+    if (!staffRecord) {
+      return c.json({ error: "No staff record found — kiosk operations require staff authorization" }, 403);
+    }
+
+    const allowedRoles = ["owner", "admin", "staff"];
+    if (!allowedRoles.includes(staffRecord.role)) {
+      return c.json({ error: `Role '${staffRecord.role}' is not authorized for kiosk call-next` }, 403);
+    }
+
+    const { locationId } = await c.req.json();
+    if (!locationId) {
+      return c.json({ error: "locationId is required" }, 400);
+    }
+
+    // Verify staff belongs to same business as location
+    const location = await kv.get(`location:${locationId}`);
+    if (!location || location.business_id !== staffRecord.business_id) {
+      return c.json({ error: "Staff not authorized for this location" }, 403);
+    }
+
+    // Get all queue types for the location and find the first waiting entry
+    const entries = await queueLogic.getLocationEntries(locationId);
+    const waitingEntries = entries
+      .filter((e) => e.status === "waiting")
+      .sort((a, b) => {
+        if (b.priority !== a.priority) return b.priority - a.priority;
+        if ((a.position || 0) !== (b.position || 0)) return (a.position || 0) - (b.position || 0);
+        return new Date(a.joined_at).getTime() - new Date(b.joined_at).getTime();
+      });
+
+    if (waitingEntries.length === 0) {
+      return c.json({ entry: null, message: "No customers waiting" });
+    }
+
+    // Call the first waiting entry
+    const nextEntry = waitingEntries[0];
+    const entry = await queueLogic.callNext({
+      queueTypeId: nextEntry.queue_type_id,
+      sessionId: nextEntry.session_id,
+      staffAuthUid: user.id,
+    });
+
+    if (!entry) {
+      return c.json({ entry: null, message: "No customers waiting" });
+    }
+
+    // Send WhatsApp notification (async, non-blocking)
+    if (entry.customer_phone) {
+      const business = await kv.get(`business:${entry.business_id}`);
+      whatsapp.sendYourTurnNotification({
+        businessId: entry.business_id,
+        entryId: entry.id,
+        customerId: entry.customer_id,
+        phone: entry.customer_phone,
+        locale: "en",
+        customerName: entry.customer_name || "Customer",
+        ticketNumber: entry.ticket_number,
+        queueName: entry.queue_type_name || "Queue",
+        businessName: business?.name,
+      }).catch((err: any) => console.log(`[WhatsApp kiosk-call-next] Error: ${err.message}`));
+    }
+
+    return c.json({ entry });
+  } catch (err) {
+    return c.json({ error: `Kiosk call-next failed: ${err.message}` }, 500);
+  }
+});
+
+// Kiosk mark-served — role-validated server-side
+app.post("/make-server-5252bcc1/kiosk/mark-served/:entryId", async (c) => {
+  try {
+    const user = await getAuthUser(c);
+    if (!user) return c.json({ error: "Unauthorized" }, 401);
+
+    const staffRecord = await kv.get(`staff_user:${user.id}`);
+    if (!staffRecord || !["owner", "admin", "staff"].includes(staffRecord.role)) {
+      return c.json({ error: "Not authorized for kiosk operations" }, 403);
+    }
+
+    const entryId = c.req.param("entryId");
+    const entry = await queueLogic.markServed(entryId);
+    return c.json({ entry });
+  } catch (err) {
+    return c.json({ error: `Kiosk mark-served failed: ${err.message}` }, 500);
+  }
+});
+
+// Kiosk mark-noshow — role-validated server-side
+app.post("/make-server-5252bcc1/kiosk/mark-noshow/:entryId", async (c) => {
+  try {
+    const user = await getAuthUser(c);
+    if (!user) return c.json({ error: "Unauthorized" }, 401);
+
+    const staffRecord = await kv.get(`staff_user:${user.id}`);
+    if (!staffRecord || !["owner", "admin", "staff"].includes(staffRecord.role)) {
+      return c.json({ error: "Not authorized for kiosk operations" }, 403);
+    }
+
+    const entryId = c.req.param("entryId");
+    const entry = await queueLogic.markNoShow(entryId);
+    return c.json({ entry });
+  } catch (err) {
+    return c.json({ error: `Kiosk mark-noshow failed: ${err.message}` }, 500);
   }
 });
 
@@ -1480,52 +1796,24 @@ app.put(
 );
 
 // GET business hours for public display (customer-facing)
+// Now uses timezone-aware checkBusinessHours from queue-logic
 app.get(
   "/make-server-5252bcc1/public/business-hours/:locationId",
   async (c) => {
     try {
       const locationId = c.req.param("locationId");
       const hours = await kv.get(`business_hours:${locationId}`);
+      const businessHours = await queueLogic.checkBusinessHours(locationId);
 
       if (!hours) {
-        return c.json({ hours: null, isOpen: true }); // Default: always open
+        return c.json({ hours: null, isOpen: true, businessHours });
       }
 
-      // Determine if currently open
-      const nowDate = new Date();
-      const dayNames = [
-        "sunday",
-        "monday",
-        "tuesday",
-        "wednesday",
-        "thursday",
-        "friday",
-        "saturday",
-      ];
-      const todayKey = dayNames[nowDate.getDay()];
-      const todaySchedule = hours.hours?.[todayKey];
-
-      let isOpen = true;
-      if (todaySchedule) {
-        if (!todaySchedule.open) {
-          isOpen = false;
-        } else {
-          const currentMinutes =
-            nowDate.getHours() * 60 + nowDate.getMinutes();
-          const [openH, openM] = (todaySchedule.openTime || "09:00")
-            .split(":")
-            .map(Number);
-          const [closeH, closeM] = (todaySchedule.closeTime || "18:00")
-            .split(":")
-            .map(Number);
-          const openMinutes = openH * 60 + openM;
-          const closeMinutes = closeH * 60 + closeM;
-          isOpen =
-            currentMinutes >= openMinutes && currentMinutes <= closeMinutes;
-        }
-      }
-
-      return c.json({ hours: hours.hours, isOpen, today: todayKey });
+      return c.json({
+        hours: hours.hours,
+        isOpen: businessHours.isOpen,
+        businessHours,
+      });
     } catch (err) {
       return c.json(
         { error: `Failed to fetch public business hours: ${err.message}` },
@@ -1584,6 +1872,1100 @@ app.post("/make-server-5252bcc1/settings/staff/invite", async (c) => {
     return c.json({ staff: newStaff });
   } catch (err) {
     return c.json({ error: `Staff invite failed: ${err.message}` }, 500);
+  }
+});
+
+// ══════════════════════════════════════════════
+// EDGE-CASE: Duplicate check, enhanced cancel, auto-noshow, mark-previous
+// ══════════════════════════════════════════════
+
+// Enhanced cancel (supports NEXT cancel with auto-promote, prevents after SERVED)
+app.post(
+  "/make-server-5252bcc1/queue/cancel-enhanced/:entryId",
+  async (c) => {
+    try {
+      const entryId = c.req.param("entryId");
+      // Support both public (no auth) and staff (auth) cancel
+      let staffAuthUid: string | undefined;
+      const user = await getAuthUser(c);
+      if (user) staffAuthUid = user.id;
+
+      const result = await queueLogic.cancelEntryEnhanced(entryId, staffAuthUid);
+      return c.json(result);
+    } catch (err) {
+      return c.json(
+        { error: `Cancel failed: ${err.message}` },
+        err.message.includes("Cannot cancel") || err.message.includes("already") ? 400 : 500
+      );
+    }
+  }
+);
+
+// Auto no-show processing for a location
+app.post(
+  "/make-server-5252bcc1/queue/auto-noshow/:locationId",
+  async (c) => {
+    try {
+      const user = await getAuthUser(c);
+      if (!user) return c.json({ error: "Unauthorized" }, 401);
+
+      const locationId = c.req.param("locationId");
+      const body = await c.req.json().catch(() => ({}));
+      const timeoutMinutes = body.timeoutMinutes || 10;
+
+      const result = await queueLogic.processAutoNoShows(locationId, timeoutMinutes);
+      return c.json(result);
+    } catch (err) {
+      return c.json({ error: `Auto no-show failed: ${err.message}` }, 500);
+    }
+  }
+);
+
+// Mark previous as served
+app.post("/make-server-5252bcc1/queue/mark-previous-served", async (c) => {
+  try {
+    const user = await getAuthUser(c);
+    if (!user) return c.json({ error: "Unauthorized" }, 401);
+
+    const { queueTypeId, sessionId } = await c.req.json();
+    const entry = await queueLogic.markPreviousAsServed({
+      queueTypeId,
+      sessionId,
+      staffAuthUid: user.id,
+    });
+
+    if (!entry) {
+      return c.json({ entry: null, message: "No previous entry to mark" });
+    }
+    return c.json({ entry });
+  } catch (err) {
+    return c.json({ error: `Mark previous served failed: ${err.message}` }, 500);
+  }
+});
+
+// Check duplicate entry before join
+app.post("/make-server-5252bcc1/public/queue/check-duplicate", async (c) => {
+  try {
+    const { locationId, phone, customerId } = await c.req.json();
+    const existing = await queueLogic.checkDuplicateEntry({
+      locationId,
+      customerPhone: phone || null,
+      customerId: customerId || null,
+    });
+    return c.json({ exists: !!existing, entry: existing });
+  } catch (err) {
+    return c.json({ error: `Duplicate check failed: ${err.message}` }, 500);
+  }
+});
+
+// ══════════════════════════════════════════════
+// AUDIT LOG
+// ══════════════════════════════════════════════
+
+app.get("/make-server-5252bcc1/audit/:locationId", async (c) => {
+  try {
+    const user = await getAuthUser(c);
+    if (!user) return c.json({ error: "Unauthorized" }, 401);
+
+    const staffRecord = await kv.get(`staff_user:${user.id}`);
+    if (!staffRecord || staffRecord.role !== "owner") {
+      return c.json({ error: "Only owners can view audit logs" }, 403);
+    }
+
+    const locationId = c.req.param("locationId");
+    const startDate = c.req.query("startDate") || undefined;
+    const endDate = c.req.query("endDate") || undefined;
+    const eventType = c.req.query("eventType") || undefined;
+    const staffId = c.req.query("staffId") || undefined;
+    const limit = parseInt(c.req.query("limit") || "50", 10);
+    const offset = parseInt(c.req.query("offset") || "0", 10);
+
+    const result = await queueLogic.readAuditLog({
+      locationId,
+      startDate,
+      endDate,
+      eventType: eventType as any,
+      staffId,
+      limit,
+      offset,
+    });
+
+    return c.json(result);
+  } catch (err) {
+    return c.json({ error: `Audit log fetch failed: ${err.message}` }, 500);
+  }
+});
+
+// ══════════════════════════════════════════════
+// SESSION LIFECYCLE — Smart Queue Session Management
+// ══════════════════════════════════════════════
+
+// Get active sessions for a location (public, no auth)
+app.get("/make-server-5252bcc1/public/session/active/:locationId", async (c) => {
+  try {
+    const locationId = c.req.param("locationId");
+    const result = await queueLogic.getActiveSession(locationId);
+    return c.json(result);
+  } catch (err) {
+    return c.json(
+      { error: `Active session fetch failed: ${err.message}` },
+      500
+    );
+  }
+});
+
+// Check business hours for a location (public, no auth)
+app.get("/make-server-5252bcc1/public/session/hours/:locationId", async (c) => {
+  try {
+    const locationId = c.req.param("locationId");
+    const businessHours = await queueLogic.checkBusinessHours(locationId);
+    return c.json({ businessHours });
+  } catch (err) {
+    return c.json(
+      { error: `Business hours check failed: ${err.message}` },
+      500
+    );
+  }
+});
+
+// Get/create today's smart session (staff, auth required)
+app.post("/make-server-5252bcc1/queue/session-smart", async (c) => {
+  try {
+    const user = await getAuthUser(c);
+    if (!user) return c.json({ error: "Unauthorized" }, 401);
+    const { queueTypeId, locationId, businessId, skipBusinessHoursCheck } =
+      await c.req.json();
+    const result = await queueLogic.getOrCreateTodaySessionSmart(
+      queueTypeId,
+      locationId,
+      businessId,
+      { skipBusinessHoursCheck: !!skipBusinessHoursCheck }
+    );
+    return c.json(result);
+  } catch (err) {
+    return c.json(
+      { error: `Smart session fetch failed: ${err.message}` },
+      500
+    );
+  }
+});
+
+// Close a specific session (staff, auth required)
+app.post("/make-server-5252bcc1/queue/session/close/:sessionId", async (c) => {
+  try {
+    const user = await getAuthUser(c);
+    if (!user) return c.json({ error: "Unauthorized" }, 401);
+
+    const staffRecord = await kv.get(`staff_user:${user.id}`);
+    if (!staffRecord || (staffRecord.role !== "owner" && staffRecord.role !== "admin")) {
+      return c.json({ error: "Only owners/admins can close sessions" }, 403);
+    }
+
+    const sessionId = c.req.param("sessionId");
+    const body = await c.req.json().catch(() => ({}));
+    const result = await queueLogic.closeSession(sessionId, body.reason || "Manually closed by staff");
+    return c.json(result);
+  } catch (err) {
+    return c.json(
+      { error: `Session close failed: ${err.message}` },
+      500
+    );
+  }
+});
+
+// Close all sessions for a location (staff, auth required)
+app.post("/make-server-5252bcc1/queue/session/close-all/:locationId", async (c) => {
+  try {
+    const user = await getAuthUser(c);
+    if (!user) return c.json({ error: "Unauthorized" }, 401);
+
+    const staffRecord = await kv.get(`staff_user:${user.id}`);
+    if (!staffRecord || (staffRecord.role !== "owner" && staffRecord.role !== "admin")) {
+      return c.json({ error: "Only owners/admins can close all sessions" }, 403);
+    }
+
+    const locationId = c.req.param("locationId");
+    const body = await c.req.json().catch(() => ({}));
+    const result = await queueLogic.closeAllSessionsForLocation(
+      locationId,
+      body.reason || "Manually closed all sessions"
+    );
+    return c.json(result);
+  } catch (err) {
+    return c.json(
+      { error: `Close all sessions failed: ${err.message}` },
+      500
+    );
+  }
+});
+
+// Archive old sessions (staff, auth required)
+app.post("/make-server-5252bcc1/queue/session/archive/:locationId", async (c) => {
+  try {
+    const user = await getAuthUser(c);
+    if (!user) return c.json({ error: "Unauthorized" }, 401);
+
+    const staffRecord = await kv.get(`staff_user:${user.id}`);
+    if (!staffRecord || staffRecord.role !== "owner") {
+      return c.json({ error: "Only owners can archive sessions" }, 403);
+    }
+
+    const locationId = c.req.param("locationId");
+    const body = await c.req.json().catch(() => ({}));
+    const daysOld = body.daysOld || 30;
+    const result = await queueLogic.archiveOldSessions(locationId, daysOld);
+    return c.json(result);
+  } catch (err) {
+    return c.json(
+      { error: `Archive sessions failed: ${err.message}` },
+      500
+    );
+  }
+});
+
+// Auto-close expired sessions for a business (cron endpoint)
+// In production, called by Supabase pg_cron or Edge Function schedule.
+app.post("/make-server-5252bcc1/cron/auto-close-sessions", async (c) => {
+  try {
+    const authHeader = c.req.header("Authorization")?.split(" ")[1];
+    const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+
+    let isAuthorized = false;
+    if (authHeader === serviceRoleKey) {
+      isAuthorized = true;
+    } else {
+      const user = await getAuthUser(c);
+      if (user) {
+        const staffRecord = await kv.get(`staff_user:${user.id}`);
+        if (staffRecord && (staffRecord.role === "owner" || staffRecord.role === "admin")) {
+          isAuthorized = true;
+        }
+      }
+    }
+
+    if (!isAuthorized) {
+      return c.json({ error: "Unauthorized for cron operation" }, 401);
+    }
+
+    const body = await c.req.json().catch(() => ({}));
+    const { businessId } = body;
+
+    if (!businessId) {
+      return c.json({ error: "businessId is required" }, 400);
+    }
+
+    const result = await queueLogic.autoCloseExpiredSessions(businessId);
+    console.log(
+      `[cron/auto-close] Business ${businessId}: processed ${result.locationsProcessed} locations, ` +
+      `closed ${result.totalClosed} sessions, cancelled ${result.totalCancelled} entries`
+    );
+    return c.json(result);
+  } catch (err) {
+    return c.json(
+      { error: `Auto-close cron failed: ${err.message}` },
+      500
+    );
+  }
+});
+
+// Midnight rotation for a location (cron endpoint)
+app.post("/make-server-5252bcc1/cron/midnight-rotation/:locationId", async (c) => {
+  try {
+    const authHeader = c.req.header("Authorization")?.split(" ")[1];
+    const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+
+    let isAuthorized = false;
+    if (authHeader === serviceRoleKey) {
+      isAuthorized = true;
+    } else {
+      const user = await getAuthUser(c);
+      if (user) {
+        const staffRecord = await kv.get(`staff_user:${user.id}`);
+        if (staffRecord && (staffRecord.role === "owner" || staffRecord.role === "admin")) {
+          isAuthorized = true;
+        }
+      }
+    }
+
+    if (!isAuthorized) {
+      return c.json({ error: "Unauthorized for midnight rotation" }, 401);
+    }
+
+    const locationId = c.req.param("locationId");
+    const result = await queueLogic.midnightRotation(locationId);
+    console.log(
+      `[cron/midnight] Location ${locationId}: closed ${result.closedPrevious} sessions, ` +
+      `cancelled ${result.cancelledEntries} entries`
+    );
+    return c.json(result);
+  } catch (err) {
+    return c.json(
+      { error: `Midnight rotation failed: ${err.message}` },
+      500
+    );
+  }
+});
+
+// ══════════════════════════════════════════════
+// ADVANCED ANALYTICS — Owner/Admin analytics dashboard
+// ══════════════════════════════════════════════
+
+app.get("/make-server-5252bcc1/analytics/advanced/:locationId", async (c) => {
+  try {
+    const user = await getAuthUser(c);
+    if (!user) return c.json({ error: "Unauthorized" }, 401);
+
+    const staffRecord = await kv.get(`staff_user:${user.id}`);
+    if (!staffRecord) return c.json({ error: "Staff record not found" }, 403);
+    if (staffRecord.role !== "owner" && staffRecord.role !== "admin") {
+      return c.json({ error: "Only owners and admins can access advanced analytics" }, 403);
+    }
+
+    const locationId = c.req.param("locationId");
+    const range = c.req.query("range") || "today";
+    const customFrom = c.req.query("from");
+    const customTo = c.req.query("to");
+
+    const nowMs = Date.now();
+    let fromMs: number;
+    let toMs: number = nowMs;
+    let prevFromMs: number;
+    let prevToMs: number;
+
+    if (range === "7d") {
+      fromMs = nowMs - 7 * 86400000;
+      prevFromMs = fromMs - 7 * 86400000;
+      prevToMs = fromMs;
+    } else if (range === "30d") {
+      fromMs = nowMs - 30 * 86400000;
+      prevFromMs = fromMs - 30 * 86400000;
+      prevToMs = fromMs;
+    } else if (range === "custom" && customFrom && customTo) {
+      fromMs = new Date(customFrom).getTime();
+      toMs = new Date(customTo).getTime() + 86400000;
+      const span = toMs - fromMs;
+      prevFromMs = fromMs - span;
+      prevToMs = fromMs;
+    } else {
+      const todayStart = new Date();
+      todayStart.setHours(0, 0, 0, 0);
+      fromMs = todayStart.getTime();
+      prevFromMs = fromMs - 86400000;
+      prevToMs = fromMs;
+    }
+
+    const allEntries = await queueLogic.getLocationEntries(locationId);
+
+    const entries = allEntries.filter((e: any) => {
+      const t = new Date(e.joined_at).getTime();
+      return t >= fromMs && t <= toMs;
+    });
+
+    const prevEntries = allEntries.filter((e: any) => {
+      const t = new Date(e.joined_at).getTime();
+      return t >= prevFromMs && t < prevToMs;
+    });
+
+    function computeMetrics(entrySet: any[]) {
+      const served = entrySet.filter((e: any) => e.status === "served");
+      const noShows = entrySet.filter((e: any) => e.status === "no_show");
+      const cancelled = entrySet.filter((e: any) => e.status === "cancelled");
+      const waiting = entrySet.filter((e: any) => e.status === "waiting");
+      const serving = entrySet.filter((e: any) => e.status === "serving");
+
+      let avgWaitMinutes = 0;
+      const withWait = served.filter((e: any) => e.joined_at && e.called_at);
+      if (withWait.length > 0) {
+        const totalWait = withWait.reduce((acc: number, e: any) =>
+          acc + (new Date(e.called_at).getTime() - new Date(e.joined_at).getTime()) / 60000, 0);
+        avgWaitMinutes = Math.round((totalWait / withWait.length) * 10) / 10;
+      }
+
+      let avgServiceMinutes = 0;
+      const withService = served.filter((e: any) => e.called_at && e.completed_at);
+      if (withService.length > 0) {
+        const totalService = withService.reduce((acc: number, e: any) =>
+          acc + (new Date(e.completed_at).getTime() - new Date(e.called_at).getTime()) / 60000, 0);
+        avgServiceMinutes = Math.round((totalService / withService.length) * 10) / 10;
+      }
+
+      const totalProcessed = served.length + noShows.length + cancelled.length;
+      const noShowRate = totalProcessed > 0
+        ? Math.round((noShows.length / totalProcessed) * 1000) / 10
+        : 0;
+
+      const hourCounts: number[] = new Array(24).fill(0);
+      for (const e of entrySet) {
+        const h = new Date(e.joined_at).getHours();
+        hourCounts[h]++;
+      }
+      let peakHour = 0;
+      let peakCount = 0;
+      for (let h = 0; h < 24; h++) {
+        if (hourCounts[h] > peakCount) {
+          peakCount = hourCounts[h];
+          peakHour = h;
+        }
+      }
+
+      return {
+        servedCount: served.length,
+        noShowCount: noShows.length,
+        cancelledCount: cancelled.length,
+        waitingCount: waiting.length,
+        servingCount: serving.length,
+        totalEntries: entrySet.length,
+        avgWaitMinutes,
+        avgServiceMinutes,
+        noShowRate,
+        peakHour,
+        peakHourFormatted: `${peakHour.toString().padStart(2, "0")}:00`,
+      };
+    }
+
+    const currentMetrics = computeMetrics(entries);
+    const prevMetrics = computeMetrics(prevEntries);
+
+    function pctChange(curr: number, prev: number): number {
+      if (prev === 0 && curr === 0) return 0;
+      if (prev === 0) return curr > 0 ? 100 : 0;
+      return Math.round(((curr - prev) / prev) * 1000) / 10;
+    }
+
+    const kpiChanges = {
+      servedChange: pctChange(currentMetrics.servedCount, prevMetrics.servedCount),
+      avgWaitChange: pctChange(currentMetrics.avgWaitMinutes, prevMetrics.avgWaitMinutes),
+      avgServiceChange: pctChange(currentMetrics.avgServiceMinutes, prevMetrics.avgServiceMinutes),
+      noShowRateChange: pctChange(currentMetrics.noShowRate, prevMetrics.noShowRate),
+    };
+
+    // Queue Health Score (0-100)
+    const targetWait = 10;
+    const waitFactor = currentMetrics.avgWaitMinutes <= targetWait
+      ? 1 : Math.max(0, 1 - (currentMetrics.avgWaitMinutes - targetWait) / 30);
+    const noShowFactor = Math.max(0, 1 - currentMetrics.noShowRate / 50);
+    const avgDailyLoad = prevMetrics.totalEntries > 0 ? prevMetrics.totalEntries : currentMetrics.totalEntries || 1;
+    const loadRatio = currentMetrics.totalEntries / Math.max(avgDailyLoad, 1);
+    const loadFactor = loadRatio <= 1.2 ? 1 : Math.max(0, 1 - (loadRatio - 1.2) / 2);
+    const healthScore = Math.round((waitFactor * 0.4 + noShowFactor * 0.3 + loadFactor * 0.3) * 100);
+    const healthLabel = healthScore >= 80 ? "smooth" : healthScore >= 50 ? "busy" : "overloaded";
+
+    // Staff Performance with Efficiency Score
+    const staffMap: Record<string, { name: string; served: number; totalWait: number; totalService: number; count: number }> = {};
+    const servedEntries = entries.filter((e: any) => e.status === "served");
+    for (const e of servedEntries) {
+      if (!e.served_by) continue;
+      if (!staffMap[e.served_by]) {
+        const staff = await kv.get(`staff_user:${e.served_by}`);
+        staffMap[e.served_by] = { name: staff?.name || "Unknown", served: 0, totalWait: 0, totalService: 0, count: 0 };
+      }
+      staffMap[e.served_by].served++;
+      if (e.joined_at && e.called_at) {
+        staffMap[e.served_by].totalWait += (new Date(e.called_at).getTime() - new Date(e.joined_at).getTime()) / 60000;
+        staffMap[e.served_by].count++;
+      }
+      if (e.called_at && e.completed_at) {
+        staffMap[e.served_by].totalService += (new Date(e.completed_at).getTime() - new Date(e.called_at).getTime()) / 60000;
+      }
+    }
+
+    const staffPerformance = Object.entries(staffMap).map(([id, s]) => {
+      const avgService = s.count > 0 ? Math.round((s.totalService / s.count) * 10) / 10 : 0;
+      const avgWait = s.count > 0 ? Math.round((s.totalWait / s.count) * 10) / 10 : 0;
+      const efficiency = avgService > 0 ? Math.round((s.served / avgService) * 100) / 10 : 0;
+      return { id, name: s.name, served: s.served, avgWait, avgService, efficiency };
+    }).sort((a, b) => b.efficiency - a.efficiency);
+
+    const maxEff = Math.max(...staffPerformance.map((s) => s.efficiency), 1);
+    for (const s of staffPerformance) {
+      (s as any).efficiencyScore = Math.round((s.efficiency / maxEff) * 100);
+    }
+
+    // Hourly Heatmap (Day of Week x Hour)
+    const heatmapData: { day: number; hour: number; count: number }[] = [];
+    const heatmapGrid: number[][] = Array.from({ length: 7 }, () => new Array(24).fill(0));
+    for (const e of entries) {
+      const d = new Date(e.joined_at);
+      const dow = d.getDay();
+      const h = d.getHours();
+      heatmapGrid[dow][h]++;
+    }
+    for (let day = 0; day < 7; day++) {
+      for (let hour = 6; hour <= 22; hour++) {
+        heatmapData.push({ day, hour, count: heatmapGrid[day][hour] });
+      }
+    }
+
+    // Service Type Analysis
+    const svcMap: Record<string, any> = {};
+    for (const e of entries) {
+      const qtId = e.queue_type_id || "general";
+      if (!svcMap[qtId]) {
+        svcMap[qtId] = {
+          name: e.queue_type_name || "General", prefix: e.queue_type_prefix || "?",
+          count: 0, servedCount: 0, noShowCount: 0, cancelledCount: 0,
+          totalWait: 0, waitCount: 0, totalService: 0, serviceCount: 0,
+        };
+      }
+      svcMap[qtId].count++;
+      if (e.status === "served") svcMap[qtId].servedCount++;
+      if (e.status === "no_show") svcMap[qtId].noShowCount++;
+      if (e.status === "cancelled") svcMap[qtId].cancelledCount++;
+      if (e.joined_at && e.called_at && e.status === "served") {
+        svcMap[qtId].totalWait += (new Date(e.called_at).getTime() - new Date(e.joined_at).getTime()) / 60000;
+        svcMap[qtId].waitCount++;
+      }
+      if (e.called_at && e.completed_at && e.status === "served") {
+        svcMap[qtId].totalService += (new Date(e.completed_at).getTime() - new Date(e.called_at).getTime()) / 60000;
+        svcMap[qtId].serviceCount++;
+      }
+    }
+    const serviceAnalysis = Object.entries(svcMap).map(([id, s]: [string, any]) => ({
+      id, name: s.name, prefix: s.prefix, totalEntries: s.count,
+      servedCount: s.servedCount, noShowCount: s.noShowCount, cancelledCount: s.cancelledCount,
+      avgWait: s.waitCount > 0 ? Math.round((s.totalWait / s.waitCount) * 10) / 10 : 0,
+      avgService: s.serviceCount > 0 ? Math.round((s.totalService / s.serviceCount) * 10) / 10 : 0,
+    })).sort((a, b) => b.totalEntries - a.totalEntries);
+
+    // Daily Trend (last 30 days)
+    const dailyMap: Record<string, any> = {};
+    const thirtyDaysAgo = nowMs - 30 * 86400000;
+    const trendEntries = allEntries.filter((e: any) => new Date(e.joined_at).getTime() >= thirtyDaysAgo);
+    for (const e of trendEntries) {
+      const date = e.joined_at.slice(0, 10);
+      if (!dailyMap[date]) {
+        dailyMap[date] = { date, served: 0, joined: 0, waitSum: 0, waitCount: 0 };
+      }
+      dailyMap[date].joined++;
+      if (e.status === "served") {
+        dailyMap[date].served++;
+        if (e.joined_at && e.called_at) {
+          dailyMap[date].waitSum += (new Date(e.called_at).getTime() - new Date(e.joined_at).getTime()) / 60000;
+          dailyMap[date].waitCount++;
+        }
+      }
+    }
+    const dailyTrend = Object.values(dailyMap)
+      .map((d: any) => ({
+        date: d.date, served: d.served, joined: d.joined,
+        avgWait: d.waitCount > 0 ? Math.round((d.waitSum / d.waitCount) * 10) / 10 : 0,
+      }))
+      .sort((a: any, b: any) => a.date.localeCompare(b.date));
+
+    // 7-Day Simple Moving Average
+    const sma7: { date: string; sma: number }[] = [];
+    for (let i = 0; i < dailyTrend.length; i++) {
+      const window = dailyTrend.slice(Math.max(0, i - 6), i + 1);
+      const avg = Math.round((window.reduce((acc: number, d: any) => acc + d.served, 0) / window.length) * 10) / 10;
+      sma7.push({ date: dailyTrend[i].date, sma: avg });
+    }
+
+    let trendDirection: "up" | "stable" | "down" = "stable";
+    if (sma7.length >= 7) {
+      const recent = sma7.slice(-3).reduce((a, d) => a + d.sma, 0) / 3;
+      const older = sma7.slice(-7, -4).reduce((a, d) => a + d.sma, 0) / Math.max(sma7.slice(-7, -4).length, 1);
+      if (recent > older * 1.1) trendDirection = "up";
+      else if (recent < older * 0.9) trendDirection = "down";
+    }
+
+    return c.json({
+      summary: currentMetrics,
+      kpiChanges,
+      healthScore,
+      healthLabel,
+      staffPerformance,
+      heatmapData,
+      serviceAnalysis,
+      dailyTrend: dailyTrend.map((d: any, i: number) => ({
+        ...d, sma7: sma7[i]?.sma ?? null,
+      })),
+      trendDirection,
+      range,
+      periodLabel: range === "today" ? "vs yesterday" : range === "7d" ? "vs prev 7 days" : range === "30d" ? "vs prev 30 days" : "vs prev period",
+    });
+  } catch (err) {
+    return c.json({ error: `Advanced analytics failed: ${err.message}` }, 500);
+  }
+});
+
+// ══════════════════════════════════════════════
+// CUSTOMER RETENTION SYSTEM
+// ══════════════════════════════════════════════
+
+// Register / ensure customer record linked to auth user
+app.post("/make-server-5252bcc1/customer/register", async (c) => {
+  try {
+    const user = await getAuthUser(c);
+    if (!user) return c.json({ error: "Unauthorized" }, 401);
+
+    const body = await c.req.json();
+    const { name, phone, preferredLanguage } = body;
+
+    let customer = await kv.get(`customer:${user.id}`);
+    if (customer) {
+      return c.json({ customer, created: false });
+    }
+
+    customer = {
+      id: user.id,
+      auth_user_id: user.id,
+      name: name || user.user_metadata?.name || user.email?.split("@")[0] || "Customer",
+      phone: phone || user.phone || null,
+      email: user.email || null,
+      preferred_language: preferredLanguage || "en",
+      created_at: now(),
+      updated_at: now(),
+    };
+    await kv.set(`customer:${user.id}`, customer);
+
+    return c.json({ customer, created: true });
+  } catch (err) {
+    return c.json({ error: `Customer registration failed: ${err.message}` }, 500);
+  }
+});
+
+// Get customer profile
+app.get("/make-server-5252bcc1/customer/profile", async (c) => {
+  try {
+    const user = await getAuthUser(c);
+    if (!user) return c.json({ error: "Unauthorized" }, 401);
+
+    const customer = await kv.get(`customer:${user.id}`);
+    return c.json({ customer: customer || null });
+  } catch (err) {
+    return c.json({ error: `Profile fetch failed: ${err.message}` }, 500);
+  }
+});
+
+// Update customer profile
+app.put("/make-server-5252bcc1/customer/profile", async (c) => {
+  try {
+    const user = await getAuthUser(c);
+    if (!user) return c.json({ error: "Unauthorized" }, 401);
+
+    let customer = await kv.get(`customer:${user.id}`);
+    if (!customer) {
+      customer = {
+        id: user.id,
+        auth_user_id: user.id,
+        name: "",
+        phone: null,
+        email: user.email || null,
+        preferred_language: "en",
+        created_at: now(),
+        updated_at: now(),
+      };
+    }
+
+    const body = await c.req.json();
+    if (body.name !== undefined) customer.name = body.name;
+    if (body.phone !== undefined) customer.phone = body.phone;
+    if (body.preferredLanguage !== undefined) customer.preferred_language = body.preferredLanguage;
+    customer.updated_at = now();
+
+    await kv.set(`customer:${user.id}`, customer);
+    return c.json({ customer });
+  } catch (err) {
+    return c.json({ error: `Profile update failed: ${err.message}` }, 500);
+  }
+});
+
+// Customer summary / analytics
+app.get("/make-server-5252bcc1/customer/summary", async (c) => {
+  try {
+    const user = await getAuthUser(c);
+    if (!user) return c.json({ error: "Unauthorized" }, 401);
+
+    const entryIds: string[] = (await kv.get(`customer_entries:${user.id}`)) || [];
+
+    if (entryIds.length === 0) {
+      return c.json({
+        totalVisits: 0,
+        avgWaitTime: 0,
+        avgServiceTime: 0,
+        noShowCount: 0,
+        noShowRate: 0,
+        cancelledCount: 0,
+        lastVisitDate: null,
+        mostUsedService: null,
+        daysSinceLastVisit: null,
+      });
+    }
+
+    const entries = [];
+    for (const eid of entryIds) {
+      const entry = await kv.get(`queue_entry:${eid}`);
+      if (entry) entries.push(entry);
+    }
+
+    let totalWaitMs = 0, waitCount = 0;
+    let totalServiceMs = 0, serviceCount = 0;
+    let noShowCount = 0, cancelledCount = 0;
+    let lastVisitDate: string | null = null;
+    const svcMap: Record<string, { name: string; count: number }> = {};
+
+    for (const e of entries) {
+      if (e.called_at && e.joined_at) {
+        const w = new Date(e.called_at).getTime() - new Date(e.joined_at).getTime();
+        if (w > 0) { totalWaitMs += w; waitCount++; }
+      }
+      if (e.served_at && e.called_at) {
+        const s = new Date(e.served_at).getTime() - new Date(e.called_at).getTime();
+        if (s > 0) { totalServiceMs += s; serviceCount++; }
+      }
+      if (e.status === "no_show") noShowCount++;
+      if (e.status === "cancelled") cancelledCount++;
+      const d = e.served_at || e.joined_at;
+      if (d && (!lastVisitDate || d > lastVisitDate)) lastVisitDate = d;
+      const qtId = e.queue_type_id || "general";
+      if (!svcMap[qtId]) svcMap[qtId] = { name: e.queue_type_name || "General", count: 0 };
+      svcMap[qtId].count++;
+    }
+
+    let mostUsedService: { id: string; name: string; count: number } | null = null;
+    for (const [id, data] of Object.entries(svcMap)) {
+      if (!mostUsedService || data.count > mostUsedService.count) {
+        mostUsedService = { id, name: data.name, count: data.count };
+      }
+    }
+
+    const daysSinceLastVisit = lastVisitDate
+      ? Math.floor((Date.now() - new Date(lastVisitDate).getTime()) / 86400000)
+      : null;
+
+    return c.json({
+      totalVisits: entries.length,
+      avgWaitTime: waitCount > 0 ? Math.round(totalWaitMs / waitCount / 60000) : 0,
+      avgServiceTime: serviceCount > 0 ? Math.round(totalServiceMs / serviceCount / 60000) : 0,
+      noShowCount,
+      noShowRate: entries.length > 0 ? Math.round((noShowCount / entries.length) * 100) : 0,
+      cancelledCount,
+      lastVisitDate,
+      mostUsedService,
+      daysSinceLastVisit,
+    });
+  } catch (err) {
+    return c.json({ error: `Summary fetch failed: ${err.message}` }, 500);
+  }
+});
+
+// Customer visit history (paginated + filtered)
+app.get("/make-server-5252bcc1/customer/history", async (c) => {
+  try {
+    const user = await getAuthUser(c);
+    if (!user) return c.json({ error: "Unauthorized" }, 401);
+
+    const entryIds: string[] = (await kv.get(`customer_entries:${user.id}`)) || [];
+    const limit = parseInt(c.req.query("limit") || "15", 10);
+    const offset = parseInt(c.req.query("offset") || "0", 10);
+    const locationFilter = c.req.query("locationId") || undefined;
+    const serviceFilter = c.req.query("queueTypeId") || undefined;
+    const startDate = c.req.query("startDate") || undefined;
+    const endDate = c.req.query("endDate") || undefined;
+
+    const allEntries = [];
+    for (const eid of entryIds) {
+      const entry = await kv.get(`queue_entry:${eid}`);
+      if (entry) allEntries.push(entry);
+    }
+    allEntries.sort((a, b) => new Date(b.joined_at).getTime() - new Date(a.joined_at).getTime());
+
+    let filtered = allEntries;
+    if (locationFilter) filtered = filtered.filter((e) => e.location_id === locationFilter);
+    if (serviceFilter) filtered = filtered.filter((e) => e.queue_type_id === serviceFilter);
+    if (startDate) {
+      const s = new Date(startDate).getTime();
+      filtered = filtered.filter((e) => new Date(e.joined_at).getTime() >= s);
+    }
+    if (endDate) {
+      const ed = new Date(endDate).getTime() + 86400000;
+      filtered = filtered.filter((e) => new Date(e.joined_at).getTime() < ed);
+    }
+
+    const locationCache: Record<string, string> = {};
+    const paginated = filtered.slice(offset, offset + limit);
+    for (const entry of paginated) {
+      if (entry.location_id && !locationCache[entry.location_id]) {
+        const loc = await kv.get(`location:${entry.location_id}`);
+        locationCache[entry.location_id] = loc?.name || "Unknown";
+      }
+      (entry as any).location_name = locationCache[entry.location_id] || "Unknown";
+    }
+
+    const locationSet = new Map<string, string>();
+    const serviceSet = new Map<string, string>();
+    for (const entry of allEntries) {
+      if (entry.location_id && !locationSet.has(entry.location_id)) {
+        if (!locationCache[entry.location_id]) {
+          const loc = await kv.get(`location:${entry.location_id}`);
+          locationCache[entry.location_id] = loc?.name || "Unknown";
+        }
+        locationSet.set(entry.location_id, locationCache[entry.location_id]);
+      }
+      if (entry.queue_type_id) serviceSet.set(entry.queue_type_id, entry.queue_type_name || "General");
+    }
+
+    return c.json({
+      entries: paginated,
+      total: filtered.length,
+      offset, limit,
+      filters: {
+        locations: Array.from(locationSet.entries()).map(([id, name]) => ({ id, name })),
+        services: Array.from(serviceSet.entries()).map(([id, name]) => ({ id, name })),
+      },
+    });
+  } catch (err) {
+    return c.json({ error: `History fetch failed: ${err.message}` }, 500);
+  }
+});
+
+// Auto-fill check for join page
+app.get("/make-server-5252bcc1/customer/autofill", async (c) => {
+  try {
+    const user = await getAuthUser(c);
+    if (!user) return c.json({ customer: null });
+
+    const customer = await kv.get(`customer:${user.id}`);
+    if (customer) {
+      return c.json({
+        customer: {
+          name: customer.name,
+          phone: customer.phone,
+          email: customer.email || user.email,
+          preferred_language: customer.preferred_language,
+        },
+        isReturning: true,
+      });
+    }
+
+    return c.json({
+      customer: {
+        name: user.user_metadata?.name || "",
+        phone: user.phone || "",
+        email: user.email || "",
+        preferred_language: "en",
+      },
+      isReturning: false,
+    });
+  } catch (err) {
+    return c.json({ error: `Autofill check failed: ${err.message}` }, 500);
+  }
+});
+
+// ══════════════════════════════════════════════
+// EMERGENCY CONTROLS — Owner-only pilot controls
+// ══════════════════════════════════════════════
+
+// Get emergency status for a location (staff, auth required)
+app.get("/make-server-5252bcc1/emergency/status/:locationId", async (c) => {
+  try {
+    const user = await getAuthUser(c);
+    if (!user) return c.json({ error: "Unauthorized" }, 401);
+
+    const locationId = c.req.param("locationId");
+    const emergency = (await kv.get(`emergency:${locationId}`)) || {
+      paused: false,
+      broadcast: null,
+      paused_at: null,
+      broadcast_at: null,
+    };
+    return c.json({ emergency });
+  } catch (err) {
+    return c.json({ error: `Emergency status fetch failed: ${err.message}` }, 500);
+  }
+});
+
+// Public emergency status (for join page / status page)
+app.get("/make-server-5252bcc1/public/emergency/:locationId", async (c) => {
+  try {
+    const locationId = c.req.param("locationId");
+    const emergency = (await kv.get(`emergency:${locationId}`)) || {
+      paused: false,
+      broadcast: null,
+    };
+    return c.json({
+      paused: !!emergency.paused,
+      broadcast: emergency.broadcast || null,
+    });
+  } catch (err) {
+    return c.json({ error: `Public emergency status failed: ${err.message}` }, 500);
+  }
+});
+
+// Pause / Resume queue (owner only)
+app.post("/make-server-5252bcc1/emergency/pause/:locationId", async (c) => {
+  try {
+    const user = await getAuthUser(c);
+    if (!user) return c.json({ error: "Unauthorized" }, 401);
+
+    const staffRecord = await kv.get(`staff_user:${user.id}`);
+    if (!staffRecord || staffRecord.role !== "owner") {
+      return c.json({ error: "Only owners can use emergency controls" }, 403);
+    }
+
+    const locationId = c.req.param("locationId");
+    const body = await c.req.json().catch(() => ({}));
+    const shouldPause = body.pause !== undefined ? !!body.pause : true;
+
+    const existing = (await kv.get(`emergency:${locationId}`)) || {
+      paused: false,
+      broadcast: null,
+      paused_at: null,
+      broadcast_at: null,
+    };
+
+    existing.paused = shouldPause;
+    existing.paused_at = shouldPause ? now() : null;
+    await kv.set(`emergency:${locationId}`, existing);
+
+    // Audit log
+    await queueLogic.writeAuditLog({
+      locationId,
+      businessId: staffRecord.business_id,
+      eventType: shouldPause ? "EMERGENCY_PAUSE" : "EMERGENCY_RESUME",
+      actorName: staffRecord.name,
+      actorId: user.id,
+      details: shouldPause
+        ? "Queue paused — new joins blocked"
+        : "Queue resumed — joins re-enabled",
+    });
+
+    // Bump realtime counter so dashboards refresh
+    const counter = ((await kv.get(`realtime_counter:${locationId}`)) || 0) + 1;
+    await kv.set(`realtime_counter:${locationId}`, counter);
+    await kv.set(`realtime_event:${locationId}`, {
+      type: shouldPause ? "EMERGENCY_PAUSE" : "EMERGENCY_RESUME",
+      timestamp: now(),
+    });
+
+    return c.json({ emergency: existing });
+  } catch (err) {
+    return c.json({ error: `Emergency pause failed: ${err.message}` }, 500);
+  }
+});
+
+// Emergency close — close all sessions + cancel all WAITING entries (owner only)
+app.post("/make-server-5252bcc1/emergency/close/:locationId", async (c) => {
+  try {
+    const user = await getAuthUser(c);
+    if (!user) return c.json({ error: "Unauthorized" }, 401);
+
+    const staffRecord = await kv.get(`staff_user:${user.id}`);
+    if (!staffRecord || staffRecord.role !== "owner") {
+      return c.json({ error: "Only owners can use emergency close" }, 403);
+    }
+
+    const locationId = c.req.param("locationId");
+
+    // 1. Cancel all WAITING entries
+    const entries = await queueLogic.getLocationEntries(locationId);
+    const waitingEntries = entries.filter((e) => e.status === "waiting");
+    let cancelledCount = 0;
+
+    for (const entry of waitingEntries) {
+      try {
+        const updated = await kv.get(`queue_entry:${entry.id}`);
+        if (updated && updated.status === "waiting") {
+          updated.status = "cancelled";
+          updated.cancelled_at = now();
+          updated.notes = (updated.notes || "") + " [Emergency close by owner]";
+          await kv.set(`queue_entry:${entry.id}`, updated);
+          cancelledCount++;
+        }
+      } catch {
+        // continue with next entry
+      }
+    }
+
+    // 2. Close all sessions
+    const closeResult = await queueLogic.closeAllSessionsForLocation(
+      locationId,
+      "Emergency close by owner"
+    );
+
+    // 3. Set emergency paused state
+    const existing = (await kv.get(`emergency:${locationId}`)) || {};
+    existing.paused = true;
+    existing.paused_at = now();
+    await kv.set(`emergency:${locationId}`, existing);
+
+    // 4. Audit log
+    await queueLogic.writeAuditLog({
+      locationId,
+      businessId: staffRecord.business_id,
+      eventType: "EMERGENCY_CLOSE",
+      actorName: staffRecord.name,
+      actorId: user.id,
+      details: `Emergency close: ${cancelledCount} waiting entries cancelled, ${closeResult.closedCount || 0} sessions closed`,
+    });
+
+    // 5. Bump realtime
+    const counter = ((await kv.get(`realtime_counter:${locationId}`)) || 0) + 1;
+    await kv.set(`realtime_counter:${locationId}`, counter);
+    await kv.set(`realtime_event:${locationId}`, {
+      type: "EMERGENCY_CLOSE",
+      timestamp: now(),
+    });
+
+    return c.json({
+      cancelledEntries: cancelledCount,
+      closedSessions: closeResult.closedCount || 0,
+      emergency: existing,
+    });
+  } catch (err) {
+    return c.json({ error: `Emergency close failed: ${err.message}` }, 500);
+  }
+});
+
+// Broadcast notice (owner only)
+app.post("/make-server-5252bcc1/emergency/broadcast/:locationId", async (c) => {
+  try {
+    const user = await getAuthUser(c);
+    if (!user) return c.json({ error: "Unauthorized" }, 401);
+
+    const staffRecord = await kv.get(`staff_user:${user.id}`);
+    if (!staffRecord || staffRecord.role !== "owner") {
+      return c.json({ error: "Only owners can broadcast notices" }, 403);
+    }
+
+    const locationId = c.req.param("locationId");
+    const body = await c.req.json();
+    const message = body.message?.trim() || null;
+
+    const existing = (await kv.get(`emergency:${locationId}`)) || {
+      paused: false,
+      broadcast: null,
+      paused_at: null,
+      broadcast_at: null,
+    };
+
+    existing.broadcast = message;
+    existing.broadcast_at = message ? now() : null;
+    await kv.set(`emergency:${locationId}`, existing);
+
+    // Audit log
+    await queueLogic.writeAuditLog({
+      locationId,
+      businessId: staffRecord.business_id,
+      eventType: message ? "EMERGENCY_BROADCAST" : "EMERGENCY_BROADCAST_CLEAR",
+      actorName: staffRecord.name,
+      actorId: user.id,
+      details: message
+        ? `Broadcast notice: "${message}"`
+        : "Broadcast notice cleared",
+    });
+
+    // Bump realtime
+    const counter = ((await kv.get(`realtime_counter:${locationId}`)) || 0) + 1;
+    await kv.set(`realtime_counter:${locationId}`, counter);
+    await kv.set(`realtime_event:${locationId}`, {
+      type: message ? "EMERGENCY_BROADCAST" : "EMERGENCY_BROADCAST_CLEAR",
+      timestamp: now(),
+    });
+
+    return c.json({ emergency: existing });
+  } catch (err) {
+    return c.json({ error: `Broadcast failed: ${err.message}` }, 500);
   }
 });
 

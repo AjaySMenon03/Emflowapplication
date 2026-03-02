@@ -84,9 +84,23 @@ export function OnboardingPage() {
       }
     }
 
+    // Guard: check if a session exists before calling refreshSession().
+    // Without this, refreshSession() throws "Invalid Refresh Token: Refresh Token Not Found".
+    const { data: existing } = await supabase.auth.getSession();
+    if (!existing?.session) return null;
+
     // Token is missing or near-expiry — refresh
-    const { data } = await supabase.auth.refreshSession();
-    return data?.session?.access_token ?? null;
+    try {
+      const { data, error } = await supabase.auth.refreshSession();
+      if (error) {
+        console.warn("[Onboarding] Token refresh failed:", error.message);
+        return null;
+      }
+      return data?.session?.access_token ?? null;
+    } catch (err: any) {
+      console.warn("[Onboarding] Token refresh error:", err?.message);
+      return null;
+    }
   };
 
   const handleNext = async () => {
