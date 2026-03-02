@@ -51,13 +51,18 @@ async function getAuthUser(c: any) {
     // If we can't decode, let getUser() handle the validation
   }
 
-  const supabase = supabaseAdmin();
-  const {
-    data: { user },
-    error,
-  } = await supabase.auth.getUser(token);
-  if (error || !user?.id) return null;
-  return user;
+  try {
+    const supabase = supabaseAdmin();
+    const { data, error } = await supabase.auth.getUser(token);
+    if (error || !data?.user?.id) {
+      console.log(`[getAuthUser] getUser failed: ${error?.message || "no user"}`);
+      return null;
+    }
+    return data.user;
+  } catch (err: any) {
+    console.log(`[getAuthUser] getUser threw: ${err?.message || err}`);
+    return null;
+  }
 }
 
 function uuid() {

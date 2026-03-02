@@ -108,26 +108,56 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     checkingRef.current = true;
 
     try {
-      const { data, error } = await api<{
-        role: string | null;
-        businessId?: string;
-        hasOnboarded: boolean;
-        record: any;
-      }>("/auth/role", { accessToken });
+      // Attempt up to 2 tries — first call may hit a transient JWT
+      // validation error at the edge-function gateway (e.g. token
+      // just rotated but gateway hasn't propagated it yet).
+      for (let attempt = 0; attempt < 2; attempt++) {
+        let tokenToUse = accessToken;
 
-      if (error || !data) {
-        console.warn("[AuthProvider] checkRole failed:", error);
-        setRole(null, null, false);
-        return false;
+        // On retry, force a fresh session refresh to get a new token
+        if (attempt > 0) {
+          console.log("[AuthProvider] checkRole retry — refreshing session");
+          await new Promise((r) => setTimeout(r, 500)); // brief delay
+          const { data: refreshed } = await supabase.auth.refreshSession();
+          if (refreshed?.session?.access_token) {
+            tokenToUse = refreshed.session.access_token;
+            setAuth(refreshed.session.user, refreshed.session);
+          } else {
+            break; // refresh failed, no point retrying
+          }
+        }
+
+        const { data, error } = await api<{
+          role: string | null;
+          businessId?: string;
+          hasOnboarded: boolean;
+          record: any;
+        }>("/auth/role", { accessToken: tokenToUse });
+
+        if (data) {
+          setRole(
+            (data.role as any) ?? null,
+            data.businessId ?? null,
+            data.hasOnboarded,
+            data.record
+          );
+          return true;
+        }
+
+        // If the error is NOT a JWT / auth issue, don't retry
+        const isAuthError =
+          error?.includes("Invalid JWT") ||
+          error?.includes("Unauthorized") ||
+          error?.includes("Session expired");
+        if (!isAuthError) {
+          console.warn("[AuthProvider] checkRole failed (non-auth):", error);
+          break;
+        }
+        console.warn(`[AuthProvider] checkRole attempt ${attempt + 1} failed:`, error);
       }
 
-      setRole(
-        (data.role as any) ?? null,
-        data.businessId ?? null,
-        data.hasOnboarded,
-        data.record
-      );
-      return true;
+      setRole(null, null, false);
+      return false;
     } catch (err) {
       console.warn("[AuthProvider] checkRole exception:", err);
       setRole(null, null, false);

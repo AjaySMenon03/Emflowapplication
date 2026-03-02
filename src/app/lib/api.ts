@@ -63,14 +63,14 @@ export async function api<T = unknown>(
         }
 
         const newToken = refreshData?.session?.access_token;
-        if (newToken && newToken !== accessToken) {
+        if (newToken) {
           // Update Zustand store with refreshed session
           const store = useAuthStore.getState();
           if (refreshData.session) {
             store.setAuth(refreshData.session.user, refreshData.session);
           }
 
-          // Retry with the new token
+          // Retry with the (possibly refreshed) token
           return api<T>(path, {
             method,
             body,
@@ -86,7 +86,7 @@ export async function api<T = unknown>(
     const json = await res.json();
 
     if (!res.ok) {
-      const errMsg = json?.error || json?.message || `Request failed with status ${res.status}`;
+      const errMsg = json?.error || json?.message || json?.msg || `Request failed with status ${res.status}`;
       console.error(`[API ${method} ${path}] Error:`, errMsg);
       return { data: null, error: errMsg };
     }
