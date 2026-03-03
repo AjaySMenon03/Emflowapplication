@@ -54,6 +54,8 @@ export async function api<T = unknown>(
         const store = useAuthStore.getState();
         store.setAuth(refreshedSession.user, refreshedSession);
 
+        console.log(`[API ${method} ${path}] Retry with refreshed token`);
+
         // Retry with the refreshed token
         return api<T>(path, {
           method,
@@ -66,11 +68,14 @@ export async function api<T = unknown>(
       }
     }
 
-    const json = await res.json();
+    const json = await res.json().catch(() => ({}));
 
     if (!res.ok) {
       const errMsg = json?.error || json?.message || json?.msg || `Request failed with status ${res.status}`;
-      console.error(`[API ${method} ${path}] Error:`, errMsg);
+      console.error(`[API ${method} ${path}] Error (${res.status}):`, errMsg);
+      if (res.status === 401) {
+        console.error(`[API ${method} ${path}] 401 Unauthorized details:`, json);
+      }
       return { data: null, error: errMsg };
     }
 

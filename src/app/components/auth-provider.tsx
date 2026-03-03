@@ -40,7 +40,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
 
         const session = existing.session;
-        setAuth(session.user, session);
+        setAuth(session.user, session, true);
 
         // Try to fetch the role with the current token.
         // If the token happens to be expired the server will return 401
@@ -73,7 +73,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
 
       if (session?.access_token) {
-        setAuth(session.user, session);
+        setAuth(session.user, session, true);
         await checkRole(session.access_token);
       } else {
         setAuth(null, null);

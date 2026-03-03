@@ -6,21 +6,12 @@ import * as kv from "./kv_store.tsx";
 import * as queueLogic from "./queue-logic.tsx";
 import * as whatsapp from "./whatsapp.tsx";
 
+// ── Sub-App for Routes ──
 const app = new Hono();
+const baseApp = new Hono();
 
-app.use("*", logger(console.log));
-//hi
-app.use(
-  "/*",
-  cors({
-    origin: "*",
-    // allowHeaders: ["Content-Type", "Authorization"],
-    allowHeaders: ["Content-Type", "Authorization", "apikey"],
-    allowMethods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    exposeHeaders: ["Content-Length"],
-    maxAge: 600,
-  })
-);
+// ── Helpers ──
+
 
 // ── Helpers ──
 
@@ -32,36 +23,46 @@ function supabaseAdmin() {
 }
 
 async function getAuthUser(c: any) {
-  const token = c.req.header("Authorization")?.split(" ")[1];
-  if (!token) return null;
+  const authHeader = c.req.header("Authorization");
+  const apiKey = c.req.header("apikey");
+
+  if (!authHeader && !apiKey) {
+    console.log("[getAuthUser] Missing Authorization and apikey headers");
+    return null;
+  }
+
+  const token = authHeader ? authHeader.split(" ")[1] : apiKey;
+  if (!token) {
+    console.log("[getAuthUser] Could not extract token from headers");
+    return null;
+  }
 
   // Early rejection: decode JWT payload to filter out anon/service-role keys
-  // (these are not user JWTs and will fail getUser() with "Invalid JWT")
   try {
     const payloadB64 = token.split(".")[1];
     if (payloadB64) {
-      const payload = JSON.parse(atob(payloadB64));
-      // Supabase anon key has role "anon", service role key has role "service_role"
-      // Real user JWTs have role "authenticated"
+      // Use standard btoa/atob or handle padding if needed
+      const payload = JSON.parse(atob(payloadB64.replace(/-/g, "+").replace(/_/g, "/")));
       if (payload.role === "anon" || payload.role === "service_role") {
         console.log(`[getAuthUser] Rejected non-user JWT with role: ${payload.role}`);
         return null;
       }
+      console.log(`[getAuthUser] Validating JWT for user: ${payload.sub || payload.email || "unknown"} (role: ${payload.role})`);
     }
-  } catch {
-    // If we can't decode, let getUser() handle the validation
+  } catch (err: any) {
+    console.log(`[getAuthUser] JWT decode failed (continuing to getUser): ${err.message}`);
   }
 
   try {
     const supabase = supabaseAdmin();
     const { data, error } = await supabase.auth.getUser(token);
     if (error || !data?.user?.id) {
-      console.log(`[getAuthUser] getUser failed: ${error?.message || "no user"}`);
+      console.warn(`[getAuthUser] getUser failed for token: ${error?.message || "no user id"}`);
       return null;
     }
     return data.user;
   } catch (err: any) {
-    console.log(`[getAuthUser] getUser threw: ${err?.message || err}`);
+    console.error(`[getAuthUser] getUser exception: ${err?.message || err}`);
     return null;
   }
 }
@@ -74,11 +75,51 @@ function now() {
   return new Date().toISOString();
 }
 
+// ── Email Helper — send staff invitation via Gmail SMTP ──
+async function sendInviteEmail(to: string, subject: string, html: string) {
+  try {
+    const smtpEmail = Deno.env.get("SMTP_EMAIL");
+    const smtpPassword = Deno.env.get("SMTP_PASSWORD");
+    if (!smtpEmail || !smtpPassword) {
+      console.log("[sendInviteEmail] SMTP_EMAIL or SMTP_PASSWORD not set — skipping email");
+      return false;
+    }
+
+    const { SMTPClient } = await import("https://deno.land/x/denomailer@1.6.0/mod.ts");
+    const client = new SMTPClient({
+      connection: {
+        hostname: "smtp.gmail.com",
+        port: 465,
+        tls: true,
+        auth: {
+          username: smtpEmail,
+          password: smtpPassword,
+        },
+      },
+    });
+
+    await client.send({
+      from: smtpEmail,
+      to,
+      subject,
+      content: "auto",
+      html,
+    });
+
+    await client.close();
+    console.log(`[sendInviteEmail] Email sent successfully to ${to}`);
+    return true;
+  } catch (err: any) {
+    console.error(`[sendInviteEmail] Failed to send email to ${to}: ${err.message}`);
+    return false;
+  }
+}
+
 // ══════════════════════════════════════════════
 // HEALTH
 // ══════════════════════════════════════════════
 
-app.get("/make-server-5252bcc1/health", (c) => {
+baseApp.get("/health", (c) => {
   return c.json({ status: "ok" });
 });
 
@@ -86,7 +127,7 @@ app.get("/make-server-5252bcc1/health", (c) => {
 // AUTH
 // ══════════════════════════════════════════════
 
-app.post("/make-server-5252bcc1/auth/signup", async (c) => {
+baseApp.post("/auth/signup", async (c) => {
   try {
     const { email, password, name } = await c.req.json();
     if (!email || !password) {
@@ -106,14 +147,18 @@ app.post("/make-server-5252bcc1/auth/signup", async (c) => {
   }
 });
 
-app.get("/make-server-5252bcc1/auth/role", async (c) => {
+baseApp.get("/auth/role", async (c: any) => {
   try {
     const user = await getAuthUser(c);
-    if (!user)
+    if (!user) {
+      console.warn("[/auth/role] Unauthorized access attempt (no user or invalid token)");
       return c.json(
-        { error: "Unauthorized - invalid token while checking role" },
+        { error: "Unauthorized - missing or invalid user session" },
         401
       );
+    }
+
+    console.log(`[/auth/role] Checking role for user: ${user.id} (${user.email})`);
 
     const staffRecord = await kv.get(`staff_user:${user.id}`);
     if (staffRecord) {
@@ -142,7 +187,7 @@ app.get("/make-server-5252bcc1/auth/role", async (c) => {
 // ONBOARDING (unchanged)
 // ══════════════════════════════════════════════
 
-app.post("/make-server-5252bcc1/onboarding/business", async (c) => {
+baseApp.post("/onboarding/business", async (c) => {
   try {
     const user = await getAuthUser(c);
     if (!user)
@@ -196,7 +241,7 @@ app.post("/make-server-5252bcc1/onboarding/business", async (c) => {
   }
 });
 
-app.post("/make-server-5252bcc1/onboarding/location", async (c) => {
+baseApp.post("/onboarding/location", async (c) => {
   try {
     const user = await getAuthUser(c);
     if (!user)
@@ -256,7 +301,7 @@ app.post("/make-server-5252bcc1/onboarding/location", async (c) => {
   }
 });
 
-app.post("/make-server-5252bcc1/onboarding/queue-types", async (c) => {
+baseApp.post("/onboarding/queue-types", async (c) => {
   try {
     const user = await getAuthUser(c);
     if (!user)
@@ -307,7 +352,7 @@ app.post("/make-server-5252bcc1/onboarding/queue-types", async (c) => {
   }
 });
 
-app.post("/make-server-5252bcc1/onboarding/business-hours", async (c) => {
+baseApp.post("/onboarding/business-hours", async (c) => {
   try {
     const user = await getAuthUser(c);
     if (!user)
@@ -331,7 +376,7 @@ app.post("/make-server-5252bcc1/onboarding/business-hours", async (c) => {
   }
 });
 
-app.post("/make-server-5252bcc1/onboarding/whatsapp", async (c) => {
+baseApp.post("/onboarding/whatsapp", async (c) => {
   try {
     const user = await getAuthUser(c);
     if (!user)
@@ -355,7 +400,7 @@ app.post("/make-server-5252bcc1/onboarding/whatsapp", async (c) => {
   }
 });
 
-app.post("/make-server-5252bcc1/onboarding/staff", async (c) => {
+baseApp.post("/onboarding/staff", async (c) => {
   try {
     const user = await getAuthUser(c);
     if (!user)
@@ -417,7 +462,7 @@ app.post("/make-server-5252bcc1/onboarding/staff", async (c) => {
   }
 });
 
-app.post("/make-server-5252bcc1/onboarding/complete", async (c) => {
+baseApp.post("/onboarding/complete", async (c) => {
   try {
     const user = await getAuthUser(c);
     if (!user)
@@ -446,7 +491,7 @@ app.post("/make-server-5252bcc1/onboarding/complete", async (c) => {
 // DATA: Business / Location
 // ══════════════════════════════════════════════
 
-app.get("/make-server-5252bcc1/business/:id", async (c) => {
+baseApp.get("/make-server-5252bcc1/business/:id", async (c) => {
   try {
     const user = await getAuthUser(c);
     if (!user) return c.json({ error: "Unauthorized" }, 401);
@@ -463,7 +508,7 @@ app.get("/make-server-5252bcc1/business/:id", async (c) => {
 });
 
 // Get locations for a business (staff)
-app.get("/make-server-5252bcc1/business/:id/locations", async (c) => {
+baseApp.get("/make-server-5252bcc1/business/:id/locations", async (c) => {
   try {
     const user = await getAuthUser(c);
     if (!user) return c.json({ error: "Unauthorized" }, 401);
@@ -488,7 +533,7 @@ app.get("/make-server-5252bcc1/business/:id/locations", async (c) => {
 // PUBLIC: Location by slug (no auth)
 // ══════════════════════════════════════════════
 
-app.get("/make-server-5252bcc1/public/location/:slug", async (c) => {
+baseApp.get("/make-server-5252bcc1/public/location/:slug", async (c) => {
   try {
     const slug = c.req.param("slug");
     const locationId = await kv.get(`location_slug:${slug}`);
@@ -515,7 +560,7 @@ app.get("/make-server-5252bcc1/public/location/:slug", async (c) => {
 });
 
 // Also support fetching location by ID (for kiosk)
-app.get("/make-server-5252bcc1/public/location-by-id/:id", async (c) => {
+baseApp.get("/make-server-5252bcc1/public/location-by-id/:id", async (c) => {
   try {
     const locationId = c.req.param("id");
     const location = await kv.get(`location:${locationId}`);
@@ -541,7 +586,7 @@ app.get("/make-server-5252bcc1/public/location-by-id/:id", async (c) => {
 // QUEUE: Customer Join (public — no auth)
 // ══════════════════════════════════════════════
 
-app.post("/make-server-5252bcc1/public/queue/join", async (c) => {
+baseApp.post("/make-server-5252bcc1/public/queue/join", async (c) => {
   try {
     const body = await c.req.json();
     const { queueTypeId, locationId, businessId, name, phone, email, locale } =
@@ -722,7 +767,7 @@ app.post("/make-server-5252bcc1/public/queue/join", async (c) => {
 // QUEUE: Customer Status (public — no auth)
 // ══════════════════════════════════════════════
 
-app.get("/make-server-5252bcc1/public/queue/status/:entryId", async (c) => {
+baseApp.get("/make-server-5252bcc1/public/queue/status/:entryId", async (c) => {
   try {
     const entryId = c.req.param("entryId");
     const entry = await kv.get(`queue_entry:${entryId}`);
@@ -764,7 +809,7 @@ app.get("/make-server-5252bcc1/public/queue/status/:entryId", async (c) => {
 // QUEUE: Customer Cancel (public)
 // ══════════════════════════════════════════════
 
-app.post(
+baseApp.post(
   "/make-server-5252bcc1/public/queue/cancel/:entryId",
   async (c) => {
     try {
@@ -785,7 +830,7 @@ app.post(
 // ══════════════════════════════════════════════
 
 // Get all entries for a location
-app.get(
+baseApp.get(
   "/make-server-5252bcc1/queue/entries/:locationId",
   async (c) => {
     try {
@@ -834,7 +879,7 @@ app.get(
 );
 
 // Call next
-app.post("/make-server-5252bcc1/queue/call-next", async (c) => {
+baseApp.post("/make-server-5252bcc1/queue/call-next", async (c) => {
   try {
     const user = await getAuthUser(c);
     if (!user) return c.json({ error: "Unauthorized" }, 401);
@@ -876,7 +921,7 @@ app.post("/make-server-5252bcc1/queue/call-next", async (c) => {
 });
 
 // Start serving (transition NEXT → SERVING)
-app.post(
+baseApp.post(
   "/make-server-5252bcc1/queue/start-serving/:entryId",
   async (c) => {
     try {
@@ -897,7 +942,7 @@ app.post(
 );
 
 // Mark served
-app.post(
+baseApp.post(
   "/make-server-5252bcc1/queue/mark-served/:entryId",
   async (c) => {
     try {
@@ -915,7 +960,7 @@ app.post(
 );
 
 // Mark no-show
-app.post(
+baseApp.post(
   "/make-server-5252bcc1/queue/mark-noshow/:entryId",
   async (c) => {
     try {
@@ -933,7 +978,7 @@ app.post(
 );
 
 // Move entry
-app.post("/make-server-5252bcc1/queue/move/:entryId", async (c) => {
+baseApp.post("/make-server-5252bcc1/queue/move/:entryId", async (c) => {
   try {
     const user = await getAuthUser(c);
     if (!user) return c.json({ error: "Unauthorized" }, 401);
@@ -949,7 +994,7 @@ app.post("/make-server-5252bcc1/queue/move/:entryId", async (c) => {
 });
 
 // Reassign staff
-app.post(
+baseApp.post(
   "/make-server-5252bcc1/queue/reassign/:entryId",
   async (c) => {
     try {
@@ -971,7 +1016,7 @@ app.post(
 );
 
 // Get queue types for location (staff)
-app.get(
+baseApp.get(
   "/make-server-5252bcc1/queue/types/:locationId",
   async (c) => {
     try {
@@ -998,7 +1043,7 @@ app.get(
 );
 
 // Get/create today's session for a queue type
-app.post("/make-server-5252bcc1/queue/session", async (c) => {
+baseApp.post("/make-server-5252bcc1/queue/session", async (c) => {
   try {
     const user = await getAuthUser(c);
     if (!user) return c.json({ error: "Unauthorized" }, 401);
@@ -1021,7 +1066,7 @@ app.post("/make-server-5252bcc1/queue/session", async (c) => {
 // REALTIME POLLING (lightweight polling endpoint)
 // ══════════════════════════════════════════════
 
-app.get(
+baseApp.get(
   "/make-server-5252bcc1/realtime/poll/:locationId",
   async (c) => {
     try {
@@ -1054,7 +1099,7 @@ app.get(
 );
 
 // Get staff list for a business (for reassignment)
-app.get(
+baseApp.get(
   "/make-server-5252bcc1/business/:id/staff",
   async (c) => {
     try {
@@ -1090,7 +1135,7 @@ app.get(
 );
 
 // Public entries for a location (used by kiosk slug route, no auth)
-app.get(
+baseApp.get(
   "/make-server-5252bcc1/public/queue/entries/:locationId",
   async (c) => {
     try {
@@ -1122,7 +1167,7 @@ app.get(
 // ANALYTICS — Precomputed metrics for reports
 // ══════════════════════════════════════════════
 
-app.get("/make-server-5252bcc1/analytics/:locationId", async (c) => {
+baseApp.get("/make-server-5252bcc1/analytics/:locationId", async (c) => {
   try {
     const user = await getAuthUser(c);
     if (!user) return c.json({ error: "Unauthorized" }, 401);
@@ -1278,7 +1323,7 @@ app.get("/make-server-5252bcc1/analytics/:locationId", async (c) => {
 // ══════════════════════════════════════════════
 
 // Create a new queue type
-app.post("/make-server-5252bcc1/settings/queue-type", async (c) => {
+baseApp.post("/make-server-5252bcc1/settings/queue-type", async (c) => {
   try {
     const user = await getAuthUser(c);
     if (!user) return c.json({ error: "Unauthorized" }, 401);
@@ -1319,7 +1364,7 @@ app.post("/make-server-5252bcc1/settings/queue-type", async (c) => {
 });
 
 // Update a queue type
-app.put("/make-server-5252bcc1/settings/queue-type/:id", async (c) => {
+baseApp.put("/make-server-5252bcc1/settings/queue-type/:id", async (c) => {
   try {
     const user = await getAuthUser(c);
     if (!user) return c.json({ error: "Unauthorized" }, 401);
@@ -1352,7 +1397,7 @@ app.put("/make-server-5252bcc1/settings/queue-type/:id", async (c) => {
 });
 
 // Delete (deactivate) a queue type
-app.delete("/make-server-5252bcc1/settings/queue-type/:id", async (c) => {
+baseApp.delete("/make-server-5252bcc1/settings/queue-type/:id", async (c) => {
   try {
     const user = await getAuthUser(c);
     if (!user) return c.json({ error: "Unauthorized" }, 401);
@@ -1378,7 +1423,7 @@ app.delete("/make-server-5252bcc1/settings/queue-type/:id", async (c) => {
 // ══════════════════════════════════════════════
 
 // Update staff role / status — owners can edit anyone, admins can edit staff-role only
-app.put("/make-server-5252bcc1/settings/staff/:authUid", async (c) => {
+baseApp.put("/make-server-5252bcc1/settings/staff/:authUid", async (c) => {
   try {
     const user = await getAuthUser(c);
     if (!user) return c.json({ error: "Unauthorized" }, 401);
@@ -1417,7 +1462,7 @@ app.put("/make-server-5252bcc1/settings/staff/:authUid", async (c) => {
 });
 
 // Reset staff password — owners & admins (admins only for staff-role)
-app.post("/make-server-5252bcc1/settings/staff/:authUid/reset-password", async (c) => {
+baseApp.post("/make-server-5252bcc1/settings/staff/:authUid/reset-password", async (c) => {
   try {
     const user = await getAuthUser(c);
     if (!user) return c.json({ error: "Unauthorized" }, 401);
@@ -1461,7 +1506,7 @@ app.post("/make-server-5252bcc1/settings/staff/:authUid/reset-password", async (
 });
 
 // Deactivate staff
-app.delete("/make-server-5252bcc1/settings/staff/:authUid", async (c) => {
+baseApp.delete("/make-server-5252bcc1/settings/staff/:authUid", async (c) => {
   try {
     const user = await getAuthUser(c);
     if (!user) return c.json({ error: "Unauthorized" }, 401);
@@ -1489,7 +1534,7 @@ app.delete("/make-server-5252bcc1/settings/staff/:authUid", async (c) => {
 // SETTINGS — Business Profile
 // ══════════════════════════════════════════════
 
-app.put("/make-server-5252bcc1/settings/business/:id", async (c) => {
+baseApp.put("/make-server-5252bcc1/settings/business/:id", async (c) => {
   try {
     const user = await getAuthUser(c);
     if (!user) return c.json({ error: "Unauthorized" }, 401);
@@ -1522,7 +1567,7 @@ app.put("/make-server-5252bcc1/settings/business/:id", async (c) => {
 // SETTINGS — Location Management
 // ══════════════════════════════════════════════
 
-app.put("/make-server-5252bcc1/settings/location/:id", async (c) => {
+baseApp.put("/make-server-5252bcc1/settings/location/:id", async (c) => {
   try {
     const user = await getAuthUser(c);
     if (!user) return c.json({ error: "Unauthorized" }, 401);
@@ -1557,7 +1602,7 @@ app.put("/make-server-5252bcc1/settings/location/:id", async (c) => {
 // ══════════════════════════════════════════════
 
 // Verify kiosk PIN for a location (public — no auth, but rate-limited by PIN check)
-app.post("/make-server-5252bcc1/kiosk/verify-pin", async (c) => {
+baseApp.post("/make-server-5252bcc1/kiosk/verify-pin", async (c) => {
   try {
     const { locationId, pin } = await c.req.json();
     if (!locationId || !pin) {
@@ -1582,7 +1627,7 @@ app.post("/make-server-5252bcc1/kiosk/verify-pin", async (c) => {
 });
 
 // Kiosk staff authenticate — validates credentials + role, returns token
-app.post("/make-server-5252bcc1/kiosk/authenticate", async (c) => {
+baseApp.post("/make-server-5252bcc1/kiosk/authenticate", async (c) => {
   try {
     const { email, password, locationId } = await c.req.json();
     if (!email || !password || !locationId) {
@@ -1635,7 +1680,7 @@ app.post("/make-server-5252bcc1/kiosk/authenticate", async (c) => {
 });
 
 // Kiosk call-next — role-validated server-side
-app.post("/make-server-5252bcc1/kiosk/call-next", async (c) => {
+baseApp.post("/make-server-5252bcc1/kiosk/call-next", async (c) => {
   try {
     const user = await getAuthUser(c);
     if (!user) return c.json({ error: "Unauthorized — staff login required for kiosk operations" }, 401);
@@ -1711,7 +1756,7 @@ app.post("/make-server-5252bcc1/kiosk/call-next", async (c) => {
 });
 
 // Kiosk mark-served — role-validated server-side
-app.post("/make-server-5252bcc1/kiosk/mark-served/:entryId", async (c) => {
+baseApp.post("/make-server-5252bcc1/kiosk/mark-served/:entryId", async (c) => {
   try {
     const user = await getAuthUser(c);
     if (!user) return c.json({ error: "Unauthorized" }, 401);
@@ -1730,7 +1775,7 @@ app.post("/make-server-5252bcc1/kiosk/mark-served/:entryId", async (c) => {
 });
 
 // Kiosk mark-noshow — role-validated server-side
-app.post("/make-server-5252bcc1/kiosk/mark-noshow/:entryId", async (c) => {
+baseApp.post("/make-server-5252bcc1/kiosk/mark-noshow/:entryId", async (c) => {
   try {
     const user = await getAuthUser(c);
     if (!user) return c.json({ error: "Unauthorized" }, 401);
@@ -1752,7 +1797,7 @@ app.post("/make-server-5252bcc1/kiosk/mark-noshow/:entryId", async (c) => {
 // SETTINGS — WhatsApp Config
 // ══════════════════════════════════════════════
 
-app.get("/make-server-5252bcc1/settings/whatsapp/:businessId", async (c) => {
+baseApp.get("/make-server-5252bcc1/settings/whatsapp/:businessId", async (c) => {
   try {
     const user = await getAuthUser(c);
     if (!user) return c.json({ error: "Unauthorized" }, 401);
@@ -1764,7 +1809,7 @@ app.get("/make-server-5252bcc1/settings/whatsapp/:businessId", async (c) => {
   }
 });
 
-app.put("/make-server-5252bcc1/settings/whatsapp/:businessId", async (c) => {
+baseApp.put("/make-server-5252bcc1/settings/whatsapp/:businessId", async (c) => {
   try {
     const user = await getAuthUser(c);
     if (!user) return c.json({ error: "Unauthorized" }, 401);
@@ -1793,7 +1838,7 @@ app.put("/make-server-5252bcc1/settings/whatsapp/:businessId", async (c) => {
 // ══════════════════════════════════════════════
 
 // GET business hours for a location
-app.get(
+baseApp.get(
   "/make-server-5252bcc1/settings/business-hours/:locationId",
   async (c) => {
     try {
@@ -1814,7 +1859,7 @@ app.get(
 );
 
 // PUT update business hours for a location
-app.put(
+baseApp.put(
   "/make-server-5252bcc1/settings/business-hours/:locationId",
   async (c) => {
     try {
@@ -1856,7 +1901,7 @@ app.put(
 
 // GET business hours for public display (customer-facing)
 // Now uses timezone-aware checkBusinessHours from queue-logic
-app.get(
+baseApp.get(
   "/make-server-5252bcc1/public/business-hours/:locationId",
   async (c) => {
     try {
@@ -1886,7 +1931,7 @@ app.get(
 // SETTINGS — Invite new staff member
 // ══════════════════════════════════════════════
 
-app.post("/make-server-5252bcc1/settings/staff/invite", async (c) => {
+baseApp.post("/make-server-5252bcc1/settings/staff/invite", async (c) => {
   try {
     const user = await getAuthUser(c);
     if (!user) return c.json({ error: "Unauthorized" }, 401);
@@ -1898,10 +1943,13 @@ app.post("/make-server-5252bcc1/settings/staff/invite", async (c) => {
     const { email, name, role, locationIds, password } = body;
     if (!email || !name) return c.json({ error: "Email and name are required" }, 400);
 
+    // Extract the password that will actually be assigned (needed for the invitation email)
+    const assignedPassword = password || "EMFlow2026!";
+
     const supabase = supabaseAdmin();
     const { data: authData, error: authError } = await supabase.auth.admin.createUser({
       email,
-      password: password || "EMFlow2026!",
+      password: assignedPassword,
       user_metadata: { name },
       email_confirm: true,
     });
@@ -1928,6 +1976,48 @@ app.post("/make-server-5252bcc1/settings/staff/invite", async (c) => {
     existing.push(authData.user.id);
     await kv.set(`business_staff:${staffRecord.business_id}`, existing);
 
+    // ── Send invitation email (non-blocking) ──
+    const loginLink = "http://localhost:5173";
+    const emailHtml = `
+      <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 560px; margin: 0 auto; padding: 32px; background: #ffffff; border-radius: 12px; border: 1px solid #e5e7eb;">
+        <div style="text-align: center; margin-bottom: 24px;">
+          <h1 style="color: #1a1a2e; font-size: 24px; margin: 0;">Welcome to EMFlow!</h1>
+          <p style="color: #6b7280; font-size: 14px; margin-top: 8px;">You've been invited to join the team</p>
+        </div>
+        <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 20px 0;" />
+        <p style="color: #374151; font-size: 15px; line-height: 1.6;">Hi <strong>${name}</strong>,</p>
+        <p style="color: #374151; font-size: 15px; line-height: 1.6;">Your staff account has been created. Use the credentials below to sign in:</p>
+        <div style="background: #f3f4f6; padding: 20px; border-radius: 8px; margin: 20px 0;">
+          <table style="width: 100%; border-collapse: collapse;">
+            <tr>
+              <td style="padding: 6px 0; color: #6b7280; font-size: 13px; width: 90px;">Login URL</td>
+              <td style="padding: 6px 0;"><a href="${loginLink}" style="color: #2563eb; font-size: 14px; font-weight: 600; text-decoration: none;">${loginLink}</a></td>
+            </tr>
+            <tr>
+              <td style="padding: 6px 0; color: #6b7280; font-size: 13px;">Email</td>
+              <td style="padding: 6px 0; color: #1a1a2e; font-size: 14px; font-weight: 600;">${email}</td>
+            </tr>
+            <tr>
+              <td style="padding: 6px 0; color: #6b7280; font-size: 13px;">Password</td>
+              <td style="padding: 6px 0; color: #1a1a2e; font-size: 14px; font-weight: 600;">${assignedPassword}</td>
+            </tr>
+          </table>
+        </div>
+        <div style="background: #fef3c7; padding: 14px 16px; border-radius: 8px; border-left: 4px solid #f59e0b; margin: 20px 0;">
+          <p style="color: #92400e; font-size: 13px; margin: 0;"><strong>⚠ Important:</strong> Please change your password after your first login for security.</p>
+        </div>
+        <div style="text-align: center; margin-top: 24px;">
+          <a href="${loginLink}" style="display: inline-block; background: #2563eb; color: #ffffff; padding: 12px 28px; border-radius: 8px; text-decoration: none; font-size: 14px; font-weight: 600;">Sign In Now</a>
+        </div>
+        <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 28px 0 16px;" />
+        <p style="color: #9ca3af; font-size: 12px; text-align: center; margin: 0;">This is an automated message from EMFlow. Please do not reply.</p>
+      </div>
+    `;
+
+    // Fire-and-forget — don't block the invite response
+    sendInviteEmail(email, "Your EMFlow Staff Invitation", emailHtml)
+      .catch((err: any) => console.error(`[staff/invite] Email send error: ${err.message}`));
+
     return c.json({ staff: newStaff });
   } catch (err) {
     return c.json({ error: `Staff invite failed: ${err.message}` }, 500);
@@ -1939,7 +2029,7 @@ app.post("/make-server-5252bcc1/settings/staff/invite", async (c) => {
 // ══════════════════════════════════════════════
 
 // Enhanced cancel (supports NEXT cancel with auto-promote, prevents after SERVED)
-app.post(
+baseApp.post(
   "/make-server-5252bcc1/queue/cancel-enhanced/:entryId",
   async (c) => {
     try {
@@ -1961,7 +2051,7 @@ app.post(
 );
 
 // Auto no-show processing for a location
-app.post(
+baseApp.post(
   "/make-server-5252bcc1/queue/auto-noshow/:locationId",
   async (c) => {
     try {
@@ -1981,7 +2071,7 @@ app.post(
 );
 
 // Mark previous as served
-app.post("/make-server-5252bcc1/queue/mark-previous-served", async (c) => {
+baseApp.post("/make-server-5252bcc1/queue/mark-previous-served", async (c) => {
   try {
     const user = await getAuthUser(c);
     if (!user) return c.json({ error: "Unauthorized" }, 401);
@@ -2003,7 +2093,7 @@ app.post("/make-server-5252bcc1/queue/mark-previous-served", async (c) => {
 });
 
 // Check duplicate entry before join
-app.post("/make-server-5252bcc1/public/queue/check-duplicate", async (c) => {
+baseApp.post("/make-server-5252bcc1/public/queue/check-duplicate", async (c) => {
   try {
     const { locationId, phone, customerId } = await c.req.json();
     const existing = await queueLogic.checkDuplicateEntry({
@@ -2021,7 +2111,7 @@ app.post("/make-server-5252bcc1/public/queue/check-duplicate", async (c) => {
 // AUDIT LOG
 // ══════════════════════════════════════════════
 
-app.get("/make-server-5252bcc1/audit/:locationId", async (c) => {
+baseApp.get("/make-server-5252bcc1/audit/:locationId", async (c) => {
   try {
     const user = await getAuthUser(c);
     if (!user) return c.json({ error: "Unauthorized" }, 401);
@@ -2060,7 +2150,7 @@ app.get("/make-server-5252bcc1/audit/:locationId", async (c) => {
 // ══════════════════════════════════════════════
 
 // Get active sessions for a location (public, no auth)
-app.get("/make-server-5252bcc1/public/session/active/:locationId", async (c) => {
+baseApp.get("/make-server-5252bcc1/public/session/active/:locationId", async (c) => {
   try {
     const locationId = c.req.param("locationId");
     const result = await queueLogic.getActiveSession(locationId);
@@ -2074,7 +2164,7 @@ app.get("/make-server-5252bcc1/public/session/active/:locationId", async (c) => 
 });
 
 // Check business hours for a location (public, no auth)
-app.get("/make-server-5252bcc1/public/session/hours/:locationId", async (c) => {
+baseApp.get("/make-server-5252bcc1/public/session/hours/:locationId", async (c) => {
   try {
     const locationId = c.req.param("locationId");
     const businessHours = await queueLogic.checkBusinessHours(locationId);
@@ -2088,7 +2178,7 @@ app.get("/make-server-5252bcc1/public/session/hours/:locationId", async (c) => {
 });
 
 // Get/create today's smart session (staff, auth required)
-app.post("/make-server-5252bcc1/queue/session-smart", async (c) => {
+baseApp.post("/make-server-5252bcc1/queue/session-smart", async (c) => {
   try {
     const user = await getAuthUser(c);
     if (!user) return c.json({ error: "Unauthorized" }, 401);
@@ -2110,7 +2200,7 @@ app.post("/make-server-5252bcc1/queue/session-smart", async (c) => {
 });
 
 // Close a specific session (staff, auth required)
-app.post("/make-server-5252bcc1/queue/session/close/:sessionId", async (c) => {
+baseApp.post("/make-server-5252bcc1/queue/session/close/:sessionId", async (c) => {
   try {
     const user = await getAuthUser(c);
     if (!user) return c.json({ error: "Unauthorized" }, 401);
@@ -2133,7 +2223,7 @@ app.post("/make-server-5252bcc1/queue/session/close/:sessionId", async (c) => {
 });
 
 // Close all sessions for a location (staff, auth required)
-app.post("/make-server-5252bcc1/queue/session/close-all/:locationId", async (c) => {
+baseApp.post("/make-server-5252bcc1/queue/session/close-all/:locationId", async (c) => {
   try {
     const user = await getAuthUser(c);
     if (!user) return c.json({ error: "Unauthorized" }, 401);
@@ -2159,7 +2249,7 @@ app.post("/make-server-5252bcc1/queue/session/close-all/:locationId", async (c) 
 });
 
 // Archive old sessions (staff, auth required)
-app.post("/make-server-5252bcc1/queue/session/archive/:locationId", async (c) => {
+baseApp.post("/make-server-5252bcc1/queue/session/archive/:locationId", async (c) => {
   try {
     const user = await getAuthUser(c);
     if (!user) return c.json({ error: "Unauthorized" }, 401);
@@ -2184,7 +2274,7 @@ app.post("/make-server-5252bcc1/queue/session/archive/:locationId", async (c) =>
 
 // Auto-close expired sessions for a business (cron endpoint)
 // In production, called by Supabase pg_cron or Edge Function schedule.
-app.post("/make-server-5252bcc1/cron/auto-close-sessions", async (c) => {
+baseApp.post("/make-server-5252bcc1/cron/auto-close-sessions", async (c) => {
   try {
     const authHeader = c.req.header("Authorization")?.split(" ")[1];
     const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
@@ -2228,7 +2318,7 @@ app.post("/make-server-5252bcc1/cron/auto-close-sessions", async (c) => {
 });
 
 // Midnight rotation for a location (cron endpoint)
-app.post("/make-server-5252bcc1/cron/midnight-rotation/:locationId", async (c) => {
+baseApp.post("/make-server-5252bcc1/cron/midnight-rotation/:locationId", async (c) => {
   try {
     const authHeader = c.req.header("Authorization")?.split(" ")[1];
     const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
@@ -2269,7 +2359,7 @@ app.post("/make-server-5252bcc1/cron/midnight-rotation/:locationId", async (c) =
 // ADVANCED ANALYTICS — Owner/Admin analytics dashboard
 // ══════════════════════════════════════════════
 
-app.get("/make-server-5252bcc1/analytics/advanced/:locationId", async (c) => {
+baseApp.get("/make-server-5252bcc1/analytics/advanced/:locationId", async (c) => {
   try {
     const user = await getAuthUser(c);
     if (!user) return c.json({ error: "Unauthorized" }, 401);
@@ -2552,7 +2642,7 @@ app.get("/make-server-5252bcc1/analytics/advanced/:locationId", async (c) => {
 // ══════════════════════════════════════════════
 
 // Register / ensure customer record linked to auth user
-app.post("/make-server-5252bcc1/customer/register", async (c) => {
+baseApp.post("/make-server-5252bcc1/customer/register", async (c) => {
   try {
     const user = await getAuthUser(c);
     if (!user) return c.json({ error: "Unauthorized" }, 401);
@@ -2584,7 +2674,7 @@ app.post("/make-server-5252bcc1/customer/register", async (c) => {
 });
 
 // Get customer profile
-app.get("/make-server-5252bcc1/customer/profile", async (c) => {
+baseApp.get("/make-server-5252bcc1/customer/profile", async (c) => {
   try {
     const user = await getAuthUser(c);
     if (!user) return c.json({ error: "Unauthorized" }, 401);
@@ -2597,7 +2687,7 @@ app.get("/make-server-5252bcc1/customer/profile", async (c) => {
 });
 
 // Update customer profile
-app.put("/make-server-5252bcc1/customer/profile", async (c) => {
+baseApp.put("/make-server-5252bcc1/customer/profile", async (c) => {
   try {
     const user = await getAuthUser(c);
     if (!user) return c.json({ error: "Unauthorized" }, 401);
@@ -2630,7 +2720,7 @@ app.put("/make-server-5252bcc1/customer/profile", async (c) => {
 });
 
 // Customer summary / analytics
-app.get("/make-server-5252bcc1/customer/summary", async (c) => {
+baseApp.get("/make-server-5252bcc1/customer/summary", async (c) => {
   try {
     const user = await getAuthUser(c);
     if (!user) return c.json({ error: "Unauthorized" }, 401);
@@ -2709,7 +2799,7 @@ app.get("/make-server-5252bcc1/customer/summary", async (c) => {
 });
 
 // Customer visit history (paginated + filtered)
-app.get("/make-server-5252bcc1/customer/history", async (c) => {
+baseApp.get("/make-server-5252bcc1/customer/history", async (c) => {
   try {
     const user = await getAuthUser(c);
     if (!user) return c.json({ error: "Unauthorized" }, 401);
@@ -2779,7 +2869,7 @@ app.get("/make-server-5252bcc1/customer/history", async (c) => {
 });
 
 // Auto-fill check for join page
-app.get("/make-server-5252bcc1/customer/autofill", async (c) => {
+baseApp.get("/make-server-5252bcc1/customer/autofill", async (c) => {
   try {
     const user = await getAuthUser(c);
     if (!user) return c.json({ customer: null });
@@ -2816,7 +2906,7 @@ app.get("/make-server-5252bcc1/customer/autofill", async (c) => {
 // ══════════════════════════════════════════════
 
 // Get emergency status for a location (staff, auth required)
-app.get("/make-server-5252bcc1/emergency/status/:locationId", async (c) => {
+baseApp.get("/make-server-5252bcc1/emergency/status/:locationId", async (c) => {
   try {
     const user = await getAuthUser(c);
     if (!user) return c.json({ error: "Unauthorized" }, 401);
@@ -2835,7 +2925,7 @@ app.get("/make-server-5252bcc1/emergency/status/:locationId", async (c) => {
 });
 
 // Public emergency status (for join page / status page)
-app.get("/make-server-5252bcc1/public/emergency/:locationId", async (c) => {
+baseApp.get("/make-server-5252bcc1/public/emergency/:locationId", async (c) => {
   try {
     const locationId = c.req.param("locationId");
     const emergency = (await kv.get(`emergency:${locationId}`)) || {
@@ -2852,7 +2942,7 @@ app.get("/make-server-5252bcc1/public/emergency/:locationId", async (c) => {
 });
 
 // Pause / Resume queue (owner only)
-app.post("/make-server-5252bcc1/emergency/pause/:locationId", async (c) => {
+baseApp.post("/make-server-5252bcc1/emergency/pause/:locationId", async (c) => {
   try {
     const user = await getAuthUser(c);
     if (!user) return c.json({ error: "Unauthorized" }, 401);
@@ -2904,7 +2994,7 @@ app.post("/make-server-5252bcc1/emergency/pause/:locationId", async (c) => {
 });
 
 // Emergency close — close all sessions + cancel all WAITING entries (owner only)
-app.post("/make-server-5252bcc1/emergency/close/:locationId", async (c) => {
+baseApp.post("/make-server-5252bcc1/emergency/close/:locationId", async (c) => {
   try {
     const user = await getAuthUser(c);
     if (!user) return c.json({ error: "Unauthorized" }, 401);
@@ -2977,7 +3067,7 @@ app.post("/make-server-5252bcc1/emergency/close/:locationId", async (c) => {
 });
 
 // Broadcast notice (owner only)
-app.post("/make-server-5252bcc1/emergency/broadcast/:locationId", async (c) => {
+baseApp.post("/make-server-5252bcc1/emergency/broadcast/:locationId", async (c) => {
   try {
     const user = await getAuthUser(c);
     if (!user) return c.json({ error: "Unauthorized" }, 401);
@@ -3026,6 +3116,32 @@ app.post("/make-server-5252bcc1/emergency/broadcast/:locationId", async (c) => {
   } catch (err) {
     return c.json({ error: `Broadcast failed: ${err.message}` }, 500);
   }
+});
+
+// ══════════════════════════════════════════════
+// MAIN APP ASSEMBLY
+// ══════════════════════════════════════════════
+
+app.use("*", logger(console.log));
+app.use(
+  "/*",
+  cors({
+    origin: "*",
+    allowHeaders: ["Content-Type", "Authorization", "apikey"],
+    allowMethods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    exposeHeaders: ["Content-Length"],
+    maxAge: 600,
+  })
+);
+
+// Mount routes on both root and slug paths for robustness
+app.route("/make-server-5252bcc1", baseApp);
+app.route("/", baseApp);
+
+// Catch-all for debugging
+app.all("*", (c: any) => {
+  console.log(`[404] No route matched: ${c.req.method} ${c.req.url} (path: ${c.req.path})`);
+  return c.json({ error: "Not Found", path: c.req.path, method: c.req.method }, 404);
 });
 
 // ══════════════════════════════════════════════

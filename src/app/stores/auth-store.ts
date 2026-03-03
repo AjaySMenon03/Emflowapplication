@@ -43,15 +43,15 @@ export const useAuthStore = create<AuthState>((set) => ({
   businessId: null,
   hasOnboarded: false,
   staffRecord: null,
-  setAuth: (user, session) =>
+  setAuth: (user, session, isLoading = false) =>
     set({
       user,
       session,
       isAuthenticated: !!user,
-      isLoading: false,
+      isLoading,
     }),
   setRole: (role, businessId, hasOnboarded, staffRecord = null) =>
-    set({ role, businessId, hasOnboarded, staffRecord }),
+    set({ role, businessId, hasOnboarded, staffRecord, isLoading: false }),
   setLoading: (isLoading) => set({ isLoading }),
   clear: () =>
     set({
