@@ -28,7 +28,7 @@ interface AuthState {
   businessId: string | null;
   hasOnboarded: boolean;
   staffRecord: StaffRecord | null;
-  setAuth: (user: User | null, session: Session | null) => void;
+  setAuth: (user: User | null, session: Session | null, isLoading?: boolean) => void;
   setRole: (role: UserRole, businessId: string | null, hasOnboarded: boolean, staffRecord?: StaffRecord | null) => void;
   setLoading: (loading: boolean) => void;
   clear: () => void;
@@ -43,13 +43,13 @@ export const useAuthStore = create<AuthState>((set) => ({
   businessId: null,
   hasOnboarded: false,
   staffRecord: null,
-  setAuth: (user, session, isLoading = false) =>
-    set({
+  setAuth: (user, session, isLoading?: boolean) =>
+    set((state) => ({
       user,
       session,
       isAuthenticated: !!user,
-      isLoading,
-    }),
+      isLoading: isLoading !== undefined ? isLoading : state.isLoading,
+    })),
   setRole: (role, businessId, hasOnboarded, staffRecord = null) =>
     set({ role, businessId, hasOnboarded, staffRecord, isLoading: false }),
   setLoading: (isLoading) => set({ isLoading }),

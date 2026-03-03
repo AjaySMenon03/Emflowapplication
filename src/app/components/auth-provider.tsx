@@ -23,10 +23,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // Bootstrap: get the stored session and verify the role
     async function bootstrap() {
       try {
-        // Use getSession() — it reads from local storage without
-        // acquiring the Web Locks "refresh" lock, so it can never
-        // conflict with an onAuthStateChange refresh happening in
-        // parallel.
         const { data: existing, error: getErr } =
           await supabase.auth.getSession();
 
@@ -34,23 +30,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
         if (getErr || !existing?.session) {
           console.log("[AuthProvider] No stored session — user is signed out");
-          setAuth(null, null);
+          setAuth(null, null, false);
           setRole(null, null, false);
           return;
         }
 
         const session = existing.session;
-        setAuth(session.user, session, true);
+        // Don't flip isLoading to true if we already have a session, 
+        // just update the auth state.
+        setAuth(session.user, session);
 
-        // Try to fetch the role with the current token.
-        // If the token happens to be expired the server will return 401
-        // and checkRole's retry logic will refresh it once via the
-        // single-flight helper — avoiding lock contention.
         await checkRole(session.access_token);
       } catch (err: any) {
         console.warn("[AuthProvider] Bootstrap error:", err?.message || err);
         if (!cancelled) {
-          setAuth(null, null);
+          setAuth(null, null, false);
           setRole(null, null, false);
         }
       }
@@ -73,10 +67,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
 
       if (session?.access_token) {
-        setAuth(session.user, session, true);
+        // Only show loading if we aren't already authenticated (e.g. initial sign in)
+        // Background refreshes shouldn't trigger a full-page loader.
+        const store = useAuthStore.getState();
+        if (!store.isAuthenticated) {
+          setLoading(true);
+        }
+
+        setAuth(session.user, session);
         await checkRole(session.access_token);
       } else {
-        setAuth(null, null);
+        setAuth(null, null, false);
         setRole(null, null, false);
       }
     });
