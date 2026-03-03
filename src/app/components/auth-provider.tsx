@@ -4,13 +4,14 @@
  *
  * Key safeguards:
  * - Skips INITIAL_SESSION to avoid trusting stale cached tokens
- * - Always calls refreshSession() before trusting any session
+ * - Uses single-flight refresh to avoid Web Locks contention
  * - Uses checkingRef to prevent concurrent fetchRole calls
  */
 import { useEffect, useRef } from "react";
 import { supabase } from "../lib/supabase";
 import { api } from "../lib/api";
 import { useAuthStore } from "../stores/auth-store";
+import { refreshSessionOnce } from "../lib/session-refresh";
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const { setAuth, setRole, setLoading, clear } = useAuthStore();
@@ -19,51 +20,36 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     let cancelled = false;
 
-    // Bootstrap: always refresh to get a valid token
+    // Bootstrap: get the stored session and verify the role
     async function bootstrap() {
       try {
-        // First check if there's an existing session at all.
-        // Calling refreshSession() without a stored refresh token throws
-        // "Invalid Refresh Token: Refresh Token Not Found".
-        const { data: existing } = await supabase.auth.getSession();
+        // Use getSession() — it reads from local storage without
+        // acquiring the Web Locks "refresh" lock, so it can never
+        // conflict with an onAuthStateChange refresh happening in
+        // parallel.
+        const { data: existing, error: getErr } =
+          await supabase.auth.getSession();
 
         if (cancelled) return;
 
-        if (!existing?.session) {
-          // No session stored — user is not logged in, nothing to refresh
+        if (getErr || !existing?.session) {
           console.log("[AuthProvider] No stored session — user is signed out");
           setAuth(null, null);
           setRole(null, null, false);
           return;
         }
 
-        // Session exists — refresh it to guarantee a fresh access token
-        const { data: refreshData, error: refreshError } =
-          await supabase.auth.refreshSession();
-
-        if (cancelled) return;
-
-        if (refreshError || !refreshData?.session?.access_token) {
-          // Refresh failed — token may have been revoked server-side
-          console.log(
-            "[AuthProvider] Session refresh failed, signing out:",
-            refreshError?.message
-          );
-          // Clean up the stale session so the error doesn't repeat
-          await supabase.auth.signOut({ scope: "local" }).catch(() => {});
-          setAuth(null, null);
-          setRole(null, null, false);
-          return;
-        }
-
-        const session = refreshData.session;
+        const session = existing.session;
         setAuth(session.user, session);
+
+        // Try to fetch the role with the current token.
+        // If the token happens to be expired the server will return 401
+        // and checkRole's retry logic will refresh it once via the
+        // single-flight helper — avoiding lock contention.
         await checkRole(session.access_token);
       } catch (err: any) {
         console.warn("[AuthProvider] Bootstrap error:", err?.message || err);
         if (!cancelled) {
-          // Clean up whatever stale state caused the crash
-          await supabase.auth.signOut({ scope: "local" }).catch(() => {});
           setAuth(null, null);
           setRole(null, null, false);
         }
@@ -109,19 +95,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     try {
       // Attempt up to 2 tries — first call may hit a transient JWT
-      // validation error at the edge-function gateway (e.g. token
-      // just rotated but gateway hasn't propagated it yet).
+      // validation error (e.g. token just rotated but gateway hasn't
+      // propagated it yet, or the stored token was slightly stale).
       for (let attempt = 0; attempt < 2; attempt++) {
         let tokenToUse = accessToken;
 
-        // On retry, force a fresh session refresh to get a new token
+        // On retry, use the single-flight refresh helper to get a
+        // fresh token without causing lock contention.
         if (attempt > 0) {
           console.log("[AuthProvider] checkRole retry — refreshing session");
-          await new Promise((r) => setTimeout(r, 500)); // brief delay
-          const { data: refreshed } = await supabase.auth.refreshSession();
-          if (refreshed?.session?.access_token) {
-            tokenToUse = refreshed.session.access_token;
-            setAuth(refreshed.session.user, refreshed.session);
+          await new Promise((r) => setTimeout(r, 300)); // brief delay
+          const refreshedSession = await refreshSessionOnce();
+          if (refreshedSession?.access_token) {
+            tokenToUse = refreshedSession.access_token;
+            setAuth(refreshedSession.user, refreshedSession);
           } else {
             break; // refresh failed, no point retrying
           }
@@ -132,7 +119,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           businessId?: string;
           hasOnboarded: boolean;
           record: any;
-        }>("/auth/role", { accessToken: tokenToUse });
+        }>("/auth/role", { accessToken: tokenToUse, _isRetry: attempt > 0 });
 
         if (data) {
           setRole(
@@ -153,7 +140,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           console.warn("[AuthProvider] checkRole failed (non-auth):", error);
           break;
         }
-        console.warn(`[AuthProvider] checkRole attempt ${attempt + 1} failed:`, error);
+        console.warn(
+          `[AuthProvider] checkRole attempt ${attempt + 1} failed:`,
+          error
+        );
       }
 
       setRole(null, null, false);

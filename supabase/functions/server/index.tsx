@@ -15,6 +15,7 @@ app.use(
   cors({
     origin: "*",
     allowHeaders: ["Content-Type", "Authorization"],
+    allowHeaders: ["Content-Type", "Authorization", "apikey"],
     allowMethods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     exposeHeaders: ["Content-Length"],
     maxAge: 600,
@@ -1376,23 +1377,32 @@ app.delete("/make-server-5252bcc1/settings/queue-type/:id", async (c) => {
 // SETTINGS — Staff Management
 // ══════════════════════════════════════════════
 
-// Update staff role / status
+// Update staff role / status — owners can edit anyone, admins can edit staff-role only
 app.put("/make-server-5252bcc1/settings/staff/:authUid", async (c) => {
   try {
     const user = await getAuthUser(c);
     if (!user) return c.json({ error: "Unauthorized" }, 401);
     const staffRecord = await kv.get(`staff_user:${user.id}`);
-    if (!staffRecord || staffRecord.role !== "owner")
-      return c.json({ error: "Only owners can manage staff" }, 403);
+    if (!staffRecord || !["owner", "admin"].includes(staffRecord.role))
+      return c.json({ error: "Only owners and admins can manage staff" }, 403);
 
     const targetUid = c.req.param("authUid");
     const target = await kv.get(`staff_user:${targetUid}`);
     if (!target) return c.json({ error: "Staff not found" }, 404);
 
+    // Admins can only edit staff-role members (not owners or other admins)
+    if (staffRecord.role === "admin" && target.role !== "staff") {
+      return c.json({ error: "Admins can only edit staff-role members" }, 403);
+    }
+
     const body = await c.req.json();
+
+    // Only owners can change roles
+    const newRole = (staffRecord.role === "owner" && body.role) ? body.role : target.role;
+
     const updated = {
       ...target,
-      role: body.role ?? target.role,
+      role: newRole,
       status: body.status ?? target.status,
       name: body.name ?? target.name,
       locations: body.locations ?? target.locations,
@@ -1403,6 +1413,50 @@ app.put("/make-server-5252bcc1/settings/staff/:authUid", async (c) => {
     return c.json({ staff: updated });
   } catch (err) {
     return c.json({ error: `Update staff failed: ${err.message}` }, 500);
+  }
+});
+
+// Reset staff password — owners & admins (admins only for staff-role)
+app.post("/make-server-5252bcc1/settings/staff/:authUid/reset-password", async (c) => {
+  try {
+    const user = await getAuthUser(c);
+    if (!user) return c.json({ error: "Unauthorized" }, 401);
+    const staffRecord = await kv.get(`staff_user:${user.id}`);
+    if (!staffRecord || !["owner", "admin"].includes(staffRecord.role))
+      return c.json({ error: "Only owners and admins can reset passwords" }, 403);
+
+    const targetUid = c.req.param("authUid");
+    const target = await kv.get(`staff_user:${targetUid}`);
+    if (!target) return c.json({ error: "Staff not found" }, 404);
+
+    // Admins can only reset passwords for staff-role members
+    if (staffRecord.role === "admin" && target.role !== "staff") {
+      return c.json({ error: "Admins can only reset passwords for staff-role members" }, 403);
+    }
+
+    // Cannot reset own password via this endpoint
+    if (targetUid === user.id) {
+      return c.json({ error: "Cannot reset your own password via admin panel" }, 400);
+    }
+
+    const body = await c.req.json();
+    const newPassword = body.password;
+    if (!newPassword || newPassword.length < 6) {
+      return c.json({ error: "Password must be at least 6 characters" }, 400);
+    }
+
+    const supabase = supabaseAdmin();
+    const { error: updateError } = await supabase.auth.admin.updateUserById(targetUid, {
+      password: newPassword,
+    });
+
+    if (updateError) {
+      return c.json({ error: `Password reset failed: ${updateError.message}` }, 500);
+    }
+
+    return c.json({ success: true, message: `Password reset for ${target.name}` });
+  } catch (err) {
+    return c.json({ error: `Password reset failed: ${err.message}` }, 500);
   }
 });
 

@@ -81,6 +81,9 @@ import {
   Save,
   X,
   CalendarClock,
+  KeyRound,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 
 // ── Types ──
@@ -149,6 +152,8 @@ export function SettingsPage() {
   const { session, staffRecord, businessId } = useAuthStore();
   const accessToken = session?.access_token;
   const isOwner = staffRecord?.role === "owner";
+  const isAdmin = staffRecord?.role === "admin";
+  const callerRole = staffRecord?.role || "staff";
 
   const [loading, setLoading] = useState(true);
   const [locations, setLocations] = useState<LocationInfo[]>([]);
@@ -304,9 +309,9 @@ export function SettingsPage() {
         <TabsContent value="staff" className="space-y-4">
           <div className="flex items-center justify-between">
             <div>
-              <h3 className="font-semibold text-foreground">Staff Members</h3>
+              <h3 className="font-semibold text-foreground">{t("settings.staffMembers")}</h3>
               <p className="text-xs text-muted-foreground">
-                {staff.length} member{staff.length !== 1 ? "s" : ""}
+                {staff.length} {t("settings.staffMemberCount", staff.length !== 1 ? "members" : "member")}
               </p>
             </div>
             {isOwner && (
@@ -314,7 +319,6 @@ export function SettingsPage() {
                 accessToken={accessToken || ""}
                 locations={locations}
                 onInvited={() => {
-                  // Reload staff
                   api<{ staff: StaffMember[] }>(
                     `/business/${businessId}/staff`,
                     { accessToken: accessToken || "" }
@@ -330,7 +334,7 @@ export function SettingsPage() {
             <Card>
               <CardContent className="flex flex-col items-center justify-center py-16 gap-4">
                 <Users className="h-10 w-10 text-muted-foreground/30" />
-                <p className="text-sm text-muted-foreground">No staff members found</p>
+                <p className="text-sm text-muted-foreground">{t("settings.noStaffFound")}</p>
               </CardContent>
             </Card>
           ) : (
@@ -339,7 +343,7 @@ export function SettingsPage() {
                 <StaffMemberRow
                   key={member.auth_user_id}
                   member={member}
-                  isOwner={!!isOwner}
+                  callerRole={callerRole}
                   currentUserId={staffRecord?.auth_user_id || ""}
                   accessToken={accessToken || ""}
                   locations={locations}
@@ -708,21 +712,41 @@ function AddQueueTypeDialog({
 // ── Staff Member Row ──
 function StaffMemberRow({
   member,
-  isOwner,
+  callerRole,
   currentUserId,
   accessToken,
   locations,
   onUpdated,
 }: {
   member: StaffMember;
-  isOwner: boolean;
+  callerRole: string;
   currentUserId: string;
   accessToken: string;
   locations: LocationInfo[];
   onUpdated: () => void;
 }) {
+  const { t } = useLocaleStore();
   const isSelf = member.auth_user_id === currentUserId;
+  const isOwner = callerRole === "owner";
+  const isAdmin = callerRole === "admin";
+
+  // Admins can edit staff-role members; owners can edit anyone except themselves and other owners
+  const canEdit =
+    !isSelf &&
+    member.role !== "owner" &&
+    (isOwner || (isAdmin && member.role === "staff"));
+
   const [updating, setUpdating] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
+  const [editName, setEditName] = useState(member.name);
+  const [editLocations, setEditLocations] = useState<string[]>(member.locations || []);
+  const [editSaving, setEditSaving] = useState(false);
+
+  // Reset password state
+  const [resetPwOpen, setResetPwOpen] = useState(false);
+  const [newPassword, setNewPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [resetPwSaving, setResetPwSaving] = useState(false);
 
   const handleRoleChange = async (newRole: string) => {
     setUpdating(true);
@@ -748,9 +772,57 @@ function StaffMemberRow({
     if (error) {
       toast.error(error);
     } else {
-      toast.success(`${member.name} deactivated`);
+      toast.success(`${member.name} ${t("settings.deactivated")}`);
       onUpdated();
     }
+  };
+
+  const handleEditSave = async () => {
+    if (!editName.trim()) return toast.error(t("settings.editStaffNameRequired"));
+    setEditSaving(true);
+    const { error } = await api(`/settings/staff/${member.auth_user_id}`, {
+      method: "PUT",
+      accessToken,
+      body: { name: editName.trim(), locations: editLocations },
+    });
+    if (error) {
+      toast.error(error);
+    } else {
+      toast.success(t("settings.editStaffSuccess"));
+      setEditOpen(false);
+      onUpdated();
+    }
+    setEditSaving(false);
+  };
+
+  const handleResetPassword = async () => {
+    if (!newPassword || newPassword.length < 6) {
+      return toast.error(t("settings.resetPwMinLength"));
+    }
+    setResetPwSaving(true);
+    const { error } = await api(
+      `/settings/staff/${member.auth_user_id}/reset-password`,
+      {
+        method: "POST",
+        accessToken,
+        body: { password: newPassword },
+      }
+    );
+    if (error) {
+      toast.error(error);
+    } else {
+      toast.success(t("settings.resetPwSuccess"));
+      setResetPwOpen(false);
+      setNewPassword("");
+      setShowPassword(false);
+    }
+    setResetPwSaving(false);
+  };
+
+  const toggleLocation = (locId: string) => {
+    setEditLocations((prev) =>
+      prev.includes(locId) ? prev.filter((l) => l !== locId) : [...prev, locId]
+    );
   };
 
   return (
@@ -775,54 +847,255 @@ function StaffMemberRow({
               </span>
               {isSelf && (
                 <Badge variant="outline" className="text-[0.6rem] px-1 py-0">
-                  You
+                  {t("settings.editStaffYou")}
                 </Badge>
               )}
             </div>
             <p className="text-xs text-muted-foreground truncate">{member.email}</p>
+            {member.locations && member.locations.length > 0 && (
+              <div className="flex flex-wrap gap-1 mt-1">
+                {member.locations.map((locId) => {
+                  const loc = locations.find((l) => l.id === locId);
+                  return loc ? (
+                    <Badge key={locId} variant="outline" className="text-[0.6rem] px-1.5 py-0 gap-0.5">
+                      <MapPin className="h-2.5 w-2.5" />
+                      {loc.name}
+                    </Badge>
+                  ) : null;
+                })}
+              </div>
+            )}
           </div>
 
           {/* Role badge */}
           <RoleBadge role={member.role} />
 
           {/* Actions */}
-          {isOwner && !isSelf && member.role !== "owner" && (
+          {canEdit && (
             <div className="flex items-center gap-1 shrink-0">
-              <Select
-                value={member.role}
-                onValueChange={handleRoleChange}
-                disabled={updating}
-              >
-                <SelectTrigger className="h-7 w-24 text-xs">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="admin">Admin</SelectItem>
-                  <SelectItem value="staff">Staff</SelectItem>
-                </SelectContent>
-              </Select>
-
-              <AlertDialog>
-                <AlertDialogTrigger asChild>
-                  <Button size="icon" variant="ghost" className="h-7 w-7 text-destructive hover:text-destructive">
-                    <Trash2 className="h-3.5 w-3.5" />
+              {/* Edit button */}
+              <Dialog open={editOpen} onOpenChange={(o) => {
+                setEditOpen(o);
+                if (o) {
+                  setEditName(member.name);
+                  setEditLocations(member.locations || []);
+                  setResetPwOpen(false);
+                  setNewPassword("");
+                  setShowPassword(false);
+                }
+              }}>
+                <DialogTrigger asChild>
+                  <Button size="icon" variant="ghost" className="h-7 w-7 text-muted-foreground hover:text-foreground">
+                    <Pencil className="h-3.5 w-3.5" />
                   </Button>
-                </AlertDialogTrigger>
-                <AlertDialogContent>
-                  <AlertDialogHeader>
-                    <AlertDialogTitle>Deactivate {member.name}?</AlertDialogTitle>
-                    <AlertDialogDescription>
-                      This staff member will no longer be able to access the system. This action can be undone later.
-                    </AlertDialogDescription>
-                  </AlertDialogHeader>
-                  <AlertDialogFooter>
-                    <AlertDialogCancel>Cancel</AlertDialogCancel>
-                    <AlertDialogAction onClick={handleDeactivate} className="bg-destructive text-destructive-foreground">
-                      Deactivate
-                    </AlertDialogAction>
-                  </AlertDialogFooter>
-                </AlertDialogContent>
-              </AlertDialog>
+                </DialogTrigger>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>{t("settings.editStaffTitle")}</DialogTitle>
+                    <DialogDescription>
+                      {t("settings.editStaffDesc")} {member.name}
+                    </DialogDescription>
+                  </DialogHeader>
+                  <div className="space-y-4 py-2">
+                    <div className="space-y-1.5">
+                      <Label>{t("settings.editStaffFullName")} *</Label>
+                      <Input
+                        value={editName}
+                        onChange={(e) => setEditName(e.target.value)}
+                        placeholder={t("settings.editStaffNamePlaceholder")}
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label>{t("settings.editStaffEmail")}</Label>
+                      <Input
+                        value={member.email}
+                        disabled
+                        className="opacity-60"
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        {t("settings.editStaffEmailReadonly")}
+                      </p>
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label>{t("settings.editStaffCurrentRole")}</Label>
+                      <div className="flex items-center gap-2">
+                        <RoleBadge role={member.role} />
+                        {isOwner && (
+                          <span className="text-xs text-muted-foreground">
+                            {t("settings.editStaffRoleHint")}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    {locations.length > 0 && (
+                      <div className="space-y-2">
+                        <Label>{t("settings.editStaffLocations")}</Label>
+                        <div className="space-y-2 rounded-lg border border-border p-3 max-h-48 overflow-y-auto">
+                          {locations.map((loc) => (
+                            <label
+                              key={loc.id}
+                              className="flex items-center gap-3 cursor-pointer hover:bg-muted/50 rounded-md p-1.5 -m-1.5 transition-colors"
+                            >
+                              <input
+                                type="checkbox"
+                                checked={editLocations.includes(loc.id)}
+                                onChange={() => toggleLocation(loc.id)}
+                                className="h-4 w-4 rounded border-border text-primary focus:ring-primary"
+                              />
+                              <div className="flex items-center gap-2 min-w-0">
+                                <MapPin className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                                <div className="min-w-0">
+                                  <span className="text-sm font-medium text-foreground block truncate">
+                                    {loc.name}
+                                  </span>
+                                  {loc.address && (
+                                    <span className="text-xs text-muted-foreground block truncate">
+                                      {loc.address}
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            </label>
+                          ))}
+                        </div>
+                        {editLocations.length === 0 && (
+                          <p className="text-xs text-amber-600 dark:text-amber-400 flex items-center gap-1">
+                            <AlertCircle className="h-3 w-3" />
+                            {t("settings.editStaffNoLocWarning")}
+                          </p>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Reset Password Section */}
+                    <Separator />
+                    <div className="space-y-2">
+                      <button
+                        type="button"
+                        className="flex items-center gap-2 text-sm font-medium text-foreground hover:text-primary transition-colors"
+                        onClick={() => {
+                          setResetPwOpen(!resetPwOpen);
+                          if (!resetPwOpen) {
+                            setNewPassword("");
+                            setShowPassword(false);
+                          }
+                        }}
+                      >
+                        <KeyRound className="h-4 w-4" />
+                        {t("settings.resetPwTitle")}
+                        <span className="text-xs text-muted-foreground ml-auto">
+                          {resetPwOpen ? "▲" : "▼"}
+                        </span>
+                      </button>
+                      {resetPwOpen && (
+                        <div className="space-y-3 pl-6 animate-fade-in">
+                          <p className="text-xs text-muted-foreground">
+                            {t("settings.resetPwDesc")}
+                          </p>
+                          <div className="space-y-1.5">
+                            <Label>{t("settings.resetPwNewLabel")}</Label>
+                            <div className="relative">
+                              <Input
+                                type={showPassword ? "text" : "password"}
+                                value={newPassword}
+                                onChange={(e) => setNewPassword(e.target.value)}
+                                placeholder={t("settings.resetPwPlaceholder")}
+                                className="pr-10"
+                              />
+                              <button
+                                type="button"
+                                className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                                onClick={() => setShowPassword(!showPassword)}
+                              >
+                                {showPassword ? (
+                                  <EyeOff className="h-4 w-4" />
+                                ) : (
+                                  <Eye className="h-4 w-4" />
+                                )}
+                              </button>
+                            </div>
+                            {newPassword.length > 0 && newPassword.length < 6 && (
+                              <p className="text-xs text-destructive flex items-center gap-1">
+                                <AlertCircle className="h-3 w-3" />
+                                {t("settings.resetPwMinLength")}
+                              </p>
+                            )}
+                          </div>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={handleResetPassword}
+                            disabled={resetPwSaving || newPassword.length < 6}
+                            className="gap-1.5"
+                          >
+                            {resetPwSaving ? (
+                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            ) : (
+                              <KeyRound className="h-3.5 w-3.5" />
+                            )}
+                            {t("settings.resetPwAction")}
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  <DialogFooter>
+                    <Button variant="outline" onClick={() => setEditOpen(false)}>
+                      {t("common.cancel")}
+                    </Button>
+                    <Button onClick={handleEditSave} disabled={editSaving}>
+                      {editSaving ? (
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      ) : (
+                        <Save className="h-4 w-4 mr-2" />
+                      )}
+                      {t("settings.editStaffSave")}
+                    </Button>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
+
+              {/* Role dropdown — owner only */}
+              {isOwner && (
+                <Select
+                  value={member.role}
+                  onValueChange={handleRoleChange}
+                  disabled={updating}
+                >
+                  <SelectTrigger className="h-7 w-24 text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="admin">Admin</SelectItem>
+                    <SelectItem value="staff">Staff</SelectItem>
+                  </SelectContent>
+                </Select>
+              )}
+
+              {/* Deactivate — owner only */}
+              {isOwner && (
+                <AlertDialog>
+                  <AlertDialogTrigger asChild>
+                    <Button size="icon" variant="ghost" className="h-7 w-7 text-destructive hover:text-destructive">
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>{t("settings.deactivateTitle")} {member.name}?</AlertDialogTitle>
+                      <AlertDialogDescription>
+                        {t("settings.deactivateDesc")}
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>{t("common.cancel")}</AlertDialogCancel>
+                      <AlertDialogAction onClick={handleDeactivate} className="bg-destructive text-destructive-foreground">
+                        {t("settings.deactivateAction")}
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
+              )}
             </div>
           )}
         </div>

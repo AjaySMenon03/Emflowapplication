@@ -12,6 +12,13 @@ export const supabase = createClient(supabaseUrl, publicAnonKey, {
     persistSession: true,
     autoRefreshToken: true,
     detectSessionInUrl: true,
+    // Use a simple pass-through lock instead of navigator.locks to avoid
+    // "Lock broken by another request with the 'steal' option" errors
+    // when multiple concurrent calls (bootstrap, onAuthStateChange,
+    // api 401-retry) contend for the same Web Lock.
+    lock: async (name: string, acquireTimeout: number, fn: () => Promise<any>) => {
+      return await fn();
+    },
   },
   realtime: {
     params: {
