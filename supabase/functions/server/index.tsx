@@ -9,12 +9,12 @@ import * as whatsapp from "./whatsapp.tsx";
 const app = new Hono();
 
 app.use("*", logger(console.log));
-
+//hi
 app.use(
   "/*",
   cors({
     origin: "*",
-    allowHeaders: ["Content-Type", "Authorization"],
+    // allowHeaders: ["Content-Type", "Authorization"],
     allowHeaders: ["Content-Type", "Authorization", "apikey"],
     allowMethods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     exposeHeaders: ["Content-Length"],
