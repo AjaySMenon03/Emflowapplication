@@ -34,7 +34,7 @@ import { Badge } from "../components/ui/badge";
 const navItems = [
   { path: "/admin", icon: LayoutDashboard, labelKey: "nav.dashboard", end: true },
   { path: "/admin/queues", icon: ListOrdered, labelKey: "nav.queues" },
-  { path: "/admin/users", icon: Users, labelKey: "nav.users" },
+  { path: "/admin/users", icon: Users, labelKey: "nav.customers" },
   { path: "/admin/reports", icon: BarChart3, labelKey: "nav.reports" },
   { path: "/admin/analytics", icon: TrendingUp, labelKey: "nav.analytics", ownerOnly: true },
   { path: "/admin/qr", icon: QrCode, labelKey: "nav.qrStand" },
@@ -112,32 +112,31 @@ export function AdminLayout() {
           {navItems
             .filter((item) => !item.ownerOnly || staffRecord?.role === "owner")
             .map((item) => (
-            <NavLink
-              key={item.path}
-              to={item.path}
-              end={item.end}
-              onClick={() => setSidebarOpen(false)}
-              className={({ isActive }) =>
-                `flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition-all duration-200 ${
-                  isActive
+              <NavLink
+                key={item.path}
+                to={item.path}
+                end={item.end}
+                onClick={() => setSidebarOpen(false)}
+                className={({ isActive }) =>
+                  `flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition-all duration-200 ${isActive
                     ? "bg-sidebar-accent text-sidebar-accent-foreground font-medium shadow-sm"
                     : "text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground"
-                }`
-              }
-            >
-              <item.icon className="h-4 w-4 shrink-0" />
-              <span className="flex-1">{t(item.labelKey)}</span>
-              {/* Pending actions badge on Queues nav item */}
-              {item.path === "/admin/queues" && pendingCount > 0 && (
-                <Badge
-                  variant="destructive"
-                  className="h-5 min-w-5 px-1.5 text-[0.6rem] flex items-center justify-center rounded-full animate-pulse"
-                >
-                  {pendingCount}
-                </Badge>
-              )}
-            </NavLink>
-          ))}
+                  }`
+                }
+              >
+                <item.icon className="h-4 w-4 shrink-0" />
+                <span className="flex-1">{t(item.labelKey)}</span>
+                {/* Pending actions badge on Queues nav item */}
+                {item.path === "/admin/queues" && pendingCount > 0 && (
+                  <Badge
+                    variant="destructive"
+                    className="h-5 min-w-5 px-1.5 text-[0.6rem] flex items-center justify-center rounded-full animate-pulse"
+                  >
+                    {pendingCount}
+                  </Badge>
+                )}
+              </NavLink>
+            ))}
 
           {/* ── Offline Queue Button (visible when pending > 0) ── */}
           {pendingCount > 0 && (
@@ -164,11 +163,26 @@ export function AdminLayout() {
 
         {/* User section */}
         <div className="p-3">
-          <div className="flex items-center gap-3 rounded-lg px-3 py-2.5">
-            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-primary/10 shrink-0">
-              <span className="text-sm font-semibold text-primary">
-                {(staffRecord?.name || user?.email || "U").charAt(0).toUpperCase()}
-              </span>
+          <div
+            className="flex items-center gap-3 rounded-lg px-3 py-2.5 cursor-pointer transition-all duration-200 hover:bg-sidebar-accent/50"
+            onClick={() => {
+              setSidebarOpen(false);
+              navigate("/admin/profile");
+            }}
+            title="View profile settings"
+          >
+            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-primary/10 shrink-0 overflow-hidden">
+              {user?.user_metadata?.avatar_url ? (
+                <img
+                  src={user.user_metadata.avatar_url}
+                  alt="Profile"
+                  className="h-full w-full object-cover"
+                />
+              ) : (
+                <span className="text-sm font-semibold text-primary">
+                  {(staffRecord?.name || user?.email || "U").charAt(0).toUpperCase()}
+                </span>
+              )}
             </div>
             <div className="flex-1 min-w-0">
               <p className="truncate text-sidebar-foreground text-sm font-medium">

@@ -2,6 +2,7 @@
 export const hi: Record<string, string> = {
   "nav.dashboard": "डैशबोर्ड",
   "nav.users": "उपयोगकर्ता",
+  "nav.customers": "ग्राहक",
   "nav.settings": "सेटिंग्स",
   "nav.audit": "ऑडिट लॉग",
   "nav.queues": "कतारें",

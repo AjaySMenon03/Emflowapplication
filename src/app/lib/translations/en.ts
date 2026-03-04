@@ -3,6 +3,7 @@ export const en: Record<string, string> = {
   // Navigation
   "nav.dashboard": "Dashboard",
   "nav.users": "Users",
+  "nav.customers": "Customers",
   "nav.settings": "Settings",
   "nav.audit": "Audit Log",
   "nav.queues": "Queues",

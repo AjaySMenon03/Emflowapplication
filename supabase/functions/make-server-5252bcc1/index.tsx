@@ -385,14 +385,45 @@ baseApp.post("/onboarding/whatsapp", async (c) => {
         401
       );
     const body = await c.req.json();
-    await kv.set(`whatsapp_settings:${body.businessId}`, {
+
+    const normalizePhoneNumber = (input: unknown): string | null => {
+      if (typeof input !== "string") return null;
+      const trimmed = input.trim();
+      if (!trimmed) return null;
+      const withoutPrefix = trimmed.startsWith("whatsapp:")
+        ? trimmed.slice("whatsapp:".length)
+        : trimmed;
+      const normalized = withoutPrefix.replace(/[\s\-().]/g, "");
+      return normalized || null;
+    };
+
+    const settings = {
       business_id: body.businessId,
       enabled: !!body.enabled,
-      phone_number: body.phoneNumber || null,
+      phone_number: normalizePhoneNumber(body.phoneNumber),
       updated_at: now(),
-    });
+    };
+
+    await kv.set(`whatsapp_settings:${body.businessId}`, settings);
+
+    console.log(`[Onboarding] WhatsApp settings saved for ${body.businessId}. Enabled: ${settings.enabled}`);
+
+    // Onboarding completed: send welcome to fixed number (no toggle check)
+    const welcomePhone = "+918547322997";
+    const staffRecord = await kv.get(`staff_user:${user.id}`);
+    const business = await kv.get(`business:${body.businessId}`);
+    console.log(`[Onboarding] Sending welcome message to ${welcomePhone}...`);
+    whatsapp.sendWelcomeMessage({
+      businessId: body.businessId,
+      phone: welcomePhone,
+      locale: (body.locale as any) || "en",
+      customerName: staffRecord?.name || "Owner",
+      businessName: business?.name || "Your Business",
+    }).catch((err: any) => console.error(`[Onboarding] Welcome message failed: ${err.message}`));
+
     return c.json({ success: true });
   } catch (err) {
+    console.error(`[Onboarding] WhatsApp settings save failed: ${err.message}`);
     return c.json(
       { error: `WhatsApp settings save failed: ${err.message}` },
       500
@@ -713,6 +744,15 @@ baseApp.post("/make-server-5252bcc1/public/queue/join", async (c) => {
       const existingEntries: string[] = (await kv.get(`customer_entries:${authUserId}`)) || [];
       existingEntries.push(entry.id);
       await kv.set(`customer_entries:${authUserId}`, existingEntries);
+    }
+
+    // Track customer in business_customers index for admin listing
+    if (customerId) {
+      const bizCustomers: string[] = (await kv.get(`business_customers:${businessId}`)) || [];
+      if (!bizCustomers.includes(customerId)) {
+        bizCustomers.push(customerId);
+        await kv.set(`business_customers:${businessId}`, bizCustomers);
+      }
     }
 
     const position = await queueLogic.calculatePosition(entry.id);
@@ -1505,6 +1545,29 @@ baseApp.post("/make-server-5252bcc1/settings/staff/:authUid/reset-password", asy
   }
 });
 
+// Update own profile — any authenticated staff can update their own name
+baseApp.put("/make-server-5252bcc1/settings/profile", async (c) => {
+  try {
+    const user = await getAuthUser(c);
+    if (!user) return c.json({ error: "Unauthorized" }, 401);
+
+    const staffRecord = await kv.get(`staff_user:${user.id}`);
+    if (!staffRecord) return c.json({ error: "Staff record not found" }, 404);
+
+    const body = await c.req.json();
+    const updated = {
+      ...staffRecord,
+      name: body.name?.trim() || staffRecord.name,
+      updated_at: now(),
+    };
+
+    await kv.set(`staff_user:${user.id}`, updated);
+    return c.json({ staff: updated });
+  } catch (err) {
+    return c.json({ error: `Profile update failed: ${err.message}` }, 500);
+  }
+});
+
 // Deactivate staff
 baseApp.delete("/make-server-5252bcc1/settings/staff/:authUid", async (c) => {
   try {
@@ -1819,16 +1882,45 @@ baseApp.put("/make-server-5252bcc1/settings/whatsapp/:businessId", async (c) => 
 
     const businessId = c.req.param("businessId");
     const body = await c.req.json();
+
+    const normalizePhoneNumber = (input: unknown): string | null => {
+      if (typeof input !== "string") return null;
+      const trimmed = input.trim();
+      if (!trimmed) return null;
+      const withoutPrefix = trimmed.startsWith("whatsapp:")
+        ? trimmed.slice("whatsapp:".length)
+        : trimmed;
+      const normalized = withoutPrefix.replace(/[\s\-().]/g, "");
+      return normalized || null;
+    };
+
     const settings = {
       business_id: businessId,
       enabled: !!body.enabled,
-      phone_number: body.phoneNumber || null,
+      phone_number: normalizePhoneNumber(body.phoneNumber),
       provider: body.provider || "twilio",
       updated_at: now(),
     };
+
     await kv.set(`whatsapp_settings:${businessId}`, settings);
+
+    console.log(`[Settings] WhatsApp updated for business ${businessId}. Enabled: ${settings.enabled}`);
+
+    // Settings saved: send welcome to fixed number (no toggle check)
+    const welcomePhone = "+918547322997";
+    const business = await kv.get(`business:${businessId}`);
+    console.log(`[Settings] Sending welcome message to ${welcomePhone}...`);
+    whatsapp.sendWelcomeMessage({
+      businessId,
+      phone: welcomePhone,
+      locale: (body.locale as any) || "en",
+      customerName: staffRecord.name || "Owner",
+      businessName: business?.name || "Your Business",
+    }).catch((err: any) => console.error(`[Settings] Welcome message failed: ${err.message}`));
+
     return c.json({ settings });
   } catch (err) {
+    console.error(`[Settings] WhatsApp update failed: ${err.message}`);
     return c.json({ error: `WhatsApp settings update failed: ${err.message}` }, 500);
   }
 });
@@ -2314,6 +2406,123 @@ baseApp.post("/make-server-5252bcc1/cron/auto-close-sessions", async (c) => {
       { error: `Auto-close cron failed: ${err.message}` },
       500
     );
+  }
+});
+
+// ══════════════════════════════════════════════
+// CUSTOMERS — Business-scoped customer management
+// ══════════════════════════════════════════════
+
+// List all customers for a business
+baseApp.get("/make-server-5252bcc1/customers/:businessId", async (c) => {
+  try {
+    const user = await getAuthUser(c);
+    if (!user) return c.json({ error: "Unauthorized" }, 401);
+
+    const staffRecord = await kv.get(`staff_user:${user.id}`);
+    if (!staffRecord) return c.json({ error: "Staff record not found" }, 403);
+
+    const businessId = c.req.param("businessId");
+    if (staffRecord.business_id !== businessId) {
+      return c.json({ error: "Not authorized for this business" }, 403);
+    }
+
+    const customerIds: string[] = (await kv.get(`business_customers:${businessId}`)) || [];
+
+    const customers: any[] = [];
+    for (const cid of customerIds) {
+      const customer = await kv.get(`customer:${cid}`);
+      if (customer) {
+        customers.push({
+          id: customer.id,
+          name: customer.name || "",
+          email: customer.email || "",
+          phone: customer.phone || "",
+          created_at: customer.created_at || "",
+          updated_at: customer.updated_at || "",
+        });
+      }
+    }
+
+    // Sort by created_at descending (newest first)
+    customers.sort((a, b) => (b.created_at || "").localeCompare(a.created_at || ""));
+
+    return c.json({ customers });
+  } catch (err) {
+    return c.json({ error: `Customer list failed: ${err.message}` }, 500);
+  }
+});
+
+// Update a customer record
+baseApp.put("/make-server-5252bcc1/customers/:customerId", async (c) => {
+  try {
+    const user = await getAuthUser(c);
+    if (!user) return c.json({ error: "Unauthorized" }, 401);
+
+    const staffRecord = await kv.get(`staff_user:${user.id}`);
+    if (!staffRecord || !["owner", "admin"].includes(staffRecord.role)) {
+      return c.json({ error: "Only owners/admins can edit customers" }, 403);
+    }
+
+    const customerId = c.req.param("customerId");
+    const customer = await kv.get(`customer:${customerId}`);
+    if (!customer) return c.json({ error: "Customer not found" }, 404);
+
+    // Verify customer belongs to this business
+    const bizCustomers: string[] = (await kv.get(`business_customers:${staffRecord.business_id}`)) || [];
+    if (!bizCustomers.includes(customerId)) {
+      return c.json({ error: "Customer does not belong to your business" }, 403);
+    }
+
+    const body = await c.req.json();
+    const updated = {
+      ...customer,
+      name: body.name?.trim() ?? customer.name,
+      email: body.email?.trim() ?? customer.email,
+      phone: body.phone?.trim() ?? customer.phone,
+      updated_at: now(),
+    };
+
+    await kv.set(`customer:${customerId}`, updated);
+    return c.json({ customer: updated });
+  } catch (err) {
+    return c.json({ error: `Customer update failed: ${err.message}` }, 500);
+  }
+});
+
+// Delete a customer record
+baseApp.delete("/make-server-5252bcc1/customers/:customerId", async (c) => {
+  try {
+    const user = await getAuthUser(c);
+    if (!user) return c.json({ error: "Unauthorized" }, 401);
+
+    const staffRecord = await kv.get(`staff_user:${user.id}`);
+    if (!staffRecord || !["owner", "admin"].includes(staffRecord.role)) {
+      return c.json({ error: "Only owners/admins can delete customers" }, 403);
+    }
+
+    const customerId = c.req.param("customerId");
+    const customer = await kv.get(`customer:${customerId}`);
+    if (!customer) return c.json({ error: "Customer not found" }, 404);
+
+    // Verify and remove from business index
+    const bizCustomers: string[] = (await kv.get(`business_customers:${staffRecord.business_id}`)) || [];
+    if (!bizCustomers.includes(customerId)) {
+      return c.json({ error: "Customer does not belong to your business" }, 403);
+    }
+
+    const updatedList = bizCustomers.filter((id: string) => id !== customerId);
+    await kv.set(`business_customers:${staffRecord.business_id}`, updatedList);
+
+    // Delete the customer record
+    await kv.del(`customer:${customerId}`);
+
+    // Clean up customer entries index if exists
+    try { await kv.del(`customer_entries:${customerId}`); } catch { }
+
+    return c.json({ success: true, message: `Customer "${customer.name}" deleted` });
+  } catch (err) {
+    return c.json({ error: `Customer delete failed: ${err.message}` }, 500);
   }
 });
 

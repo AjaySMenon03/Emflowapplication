@@ -29,6 +29,7 @@ import { SettingsPage } from "./pages/admin/settings-page";
 import { AuditPage } from "./pages/admin/audit-page";
 import { AnalyticsPage } from "./pages/admin/analytics-page";
 import { QRStandPage } from "./pages/admin/qr-stand-page";
+import { ProfilePage } from "./pages/admin/profile-page";
 import { KioskPage } from "./pages/kiosk/kiosk-page";
 import { CustomerDashboard } from "./pages/customer/customer-dashboard";
 import { CustomerHistory } from "./pages/customer/customer-history";
@@ -81,6 +82,7 @@ export const router = createBrowserRouter([
           { path: "analytics", Component: AnalyticsPage },
           { path: "qr", Component: QRStandPage },
           { path: "qr/:locationId", Component: QRStandPage },
+          { path: "profile", Component: ProfilePage },
         ],
       },
     ],

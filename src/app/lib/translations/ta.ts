@@ -2,6 +2,7 @@
 export const ta: Record<string, string> = {
   "nav.dashboard": "டாஷ்போர்டு",
   "nav.users": "பயனர்கள்",
+  "nav.customers": "வாடிக்கையாளர்கள்",
   "nav.settings": "அமைப்புகள்",
   "nav.audit": "தணிக்கை பதிவு",
   "nav.queues": "வரிசைகள்",

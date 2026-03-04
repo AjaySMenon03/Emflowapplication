@@ -2,6 +2,7 @@
 export const ml: Record<string, string> = {
   "nav.dashboard": "ഡാഷ്ബോര്‍ഡ്",
   "nav.users": "ഉപയോക്താക്കള്‍",
+  "nav.customers": "ഉപഭോക്താക്കൾ",
   "nav.settings": "ക്രമീകരണങ്ങള്‍",
   "nav.audit": "ഓഡിറ്റ് ലോഗ്",
   "nav.queues": "ക്യൂകള്‍",

@@ -17,7 +17,7 @@ import * as kv from "./kv_store.tsx";
 
 // ── Types ──
 
-export type MessageType = "confirmation" | "your_turn" | "no_show" | "cancelled";
+export type MessageType = "confirmation" | "your_turn" | "no_show" | "cancelled" | "welcome";
 export type SupportedLocale = "en" | "hi" | "ta" | "ml";
 
 export interface WhatsAppPayload {
@@ -70,6 +70,9 @@ const templates: Record<SupportedLocale, Record<MessageType, (v: WhatsAppPayload
 
     cancelled: (v) =>
       `${v.customerName}, your ticket *${v.ticketNumber}* for ${v.queueName} has been cancelled.\n\nIf this was a mistake, you can rejoin the queue at any time.\n\n— ${v.businessName || "EM Flow"}`,
+
+    welcome: (v) =>
+      `Hello ${v.customerName}, welcome to EMFlow! We are excited to serve you at ${v.businessName || "our business"}.`,
   },
 
   hi: {
@@ -84,6 +87,9 @@ const templates: Record<SupportedLocale, Record<MessageType, (v: WhatsAppPayload
 
     cancelled: (v) =>
       `${v.customerName}, ${v.queueName} के लिए आपका टिकट *${v.ticketNumber}* रद्द कर दिया गया है।\n\nयदि यह गलती से हुआ है, तो आप किसी भी समय फिर से कतार में शामिल हो सकते हैं।\n\n— ${v.businessName || "EM Flow"}`,
+
+    welcome: (v) =>
+      `नमस्ते ${v.customerName}, EMFlow में आपका स्वागत है! ${v.businessName || "हम"} आपकी सेवा करने के लिए उत्साहित हैं।`,
   },
 
   ta: {
@@ -98,6 +104,9 @@ const templates: Record<SupportedLocale, Record<MessageType, (v: WhatsAppPayload
 
     cancelled: (v) =>
       `${v.customerName}, ${v.queueName} க்கான உங்கள் டிக்கெட் *${v.ticketNumber}* ரத்து செய்யப்பட்டது.\n\nஇது தவறாக இருந்தால், எப்போது வேண்டுமானாலும் மீண்டும் சேரலாம்.\n\n— ${v.businessName || "EM Flow"}`,
+
+    welcome: (v) =>
+      `வணக்கம் ${v.customerName}, EMFlow-க்கு உங்களை வரவேற்கிறோம்! ${v.businessName || "நாங்கள்"} உங்களுக்கு சேவை செய்ய மகிழ்ச்சியடைகிறோம்.`,
   },
 
   ml: {
@@ -112,6 +121,9 @@ const templates: Record<SupportedLocale, Record<MessageType, (v: WhatsAppPayload
 
     cancelled: (v) =>
       `${v.customerName}, ${v.queueName} നുള്ള നിങ്ങളുടെ ടിക്കറ്റ് *${v.ticketNumber}* റദ്ദാക്കി.\n\nഇത് തെറ്റായിരുന്നെങ്കില്‍, എപ്പോള്‍ വേണമെങ്കിലും വീണ്ടും ചേരാം.\n\n— ${v.businessName || "EM Flow"}`,
+
+    welcome: (v) =>
+      `നമസ്കാരം ${v.customerName}! EMFlow-ലേക്ക് സ്വാഗതം. ${v.businessName || "ഞങ്ങൾ"} നിങ്ങളെ സേവിക്കുന്നതിൽ സന്തോഷിക്കുന്നു.`,
   },
 };
 
@@ -149,17 +161,73 @@ const templates: Record<SupportedLocale, Record<MessageType, (v: WhatsAppPayload
  * return { success: false, error: json.message || "Twilio error" };
  * ```
  */
-async function sendViaProvider(to: string, message: string): Promise<SendResult> {
-  // ─── PLACEHOLDER PROVIDER ───
-  // In production, replace with actual WhatsApp Business API call.
-  console.log(`[WhatsApp PLACEHOLDER] Sending to ${to}:\n${message.substring(0, 100)}...`);
+/**
+ * Validates E.164 phone number format (+countrycode digits).
+ */
+export function isValidE164(phone: string): boolean {
+  const e164Regex = /^\+[1-9]\d{1,14}$/;
+  return e164Regex.test(phone);
+}
 
-  // Simulate a successful send (90% success rate for testing)
-  const succeeded = Math.random() > 0.1;
-  if (succeeded) {
-    return { success: true, messageId: `wa_${uuid().slice(0, 8)}` };
+/**
+ * Sends a message via Twilio API.
+ */
+async function sendViaProvider(to: string, message: string): Promise<SendResult> {
+  // @ts-ignore: Deno global
+  const accountSid = Deno.env.get("TWILIO_ACCOUNT_SID");
+  // @ts-ignore: Deno global
+  const authToken = Deno.env.get("TWILIO_AUTH_TOKEN");
+  // @ts-ignore: Deno global
+  const sandboxNumber = Deno.env.get("TWILIO_SANDBOX_NUMBER");
+
+  if (!accountSid || !authToken || !sandboxNumber) {
+    console.error("[WhatsApp Twilio] Missing credentials:", {
+      hasSid: !!accountSid,
+      hasToken: !!authToken,
+      hasSandbox: !!sandboxNumber
+    });
+    return { success: false, error: "Twilio credentials not configured" };
   }
-  return { success: false, error: "Provider temporarily unavailable" };
+
+  // Ensure 'to' has 'whatsapp:' prefix for Twilio
+  // If user hardcoded it in the call, don't double-prefix
+  const recipient = to.includes("whatsapp:") ? to : `whatsapp:${to}`;
+
+  // Ensure 'sender' has 'whatsapp:' prefix
+  const sender = sandboxNumber.includes("whatsapp:") ? sandboxNumber : `whatsapp:${sandboxNumber}`;
+
+  console.log(`[WhatsApp Twilio] Attempting send:`, { recipient, sender, bodyLength: message.length });
+
+  try {
+    const res = await fetch(
+      `https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Basic ${btoa(`${accountSid}:${authToken}`)}`,
+          "Content-Type": "application/x-www-form-urlencoded",
+        },
+        body: new URLSearchParams({
+          To: recipient,
+          From: sender,
+          Body: message,
+        }),
+      }
+    );
+
+    const json = await res.json();
+
+    if (res.ok && json.sid) {
+      console.log(`[WhatsApp Twilio] Successfully sent! SID: ${json.sid}`);
+      return { success: true, messageId: json.sid };
+    } else {
+      console.error(`[WhatsApp Twilio] API Error: ${json.message || res.statusText}`, json);
+      return { success: false, error: json.message || `Twilio error ${res.status}` };
+    }
+  } catch (err: any) {
+    console.error(`[WhatsApp Twilio] Fetch exception: ${err.message}`);
+    return { success: false, error: `Network error: ${err.message}` };
+  }
 }
 
 // ══════════════════════════════════════════════
@@ -258,9 +326,10 @@ export async function sendNotification(payload: WhatsAppPayload): Promise<{
     return { sent: false, error: "WhatsApp not enabled for this business" };
   }
 
-  // Validate phone
-  if (!payload.to || payload.to.length < 5) {
-    return { sent: false, error: "Invalid phone number" };
+  // Validate phone format (E.164)
+  if (!isValidE164(payload.to)) {
+    console.log(`[WhatsApp] Invalid phone format for ${payload.to}. Expected E.164 (+countrycode...)`);
+    return { sent: false, error: "Invalid phone format. Please use E.164 (e.g., +1234567890)" };
   }
 
   // Build message
@@ -379,6 +448,32 @@ export async function sendNoShowNotification(params: {
       customerName: params.customerName,
       ticketNumber: params.ticketNumber,
       queueName: params.queueName,
+      businessName: params.businessName,
+    },
+  });
+}
+
+/**
+ * Convenience: Send welcome message.
+ */
+export async function sendWelcomeMessage(params: {
+  businessId: string;
+  phone: string;
+  locale: SupportedLocale;
+  customerName: string;
+  businessName?: string;
+}): Promise<void> {
+  await sendNotification({
+    to: params.phone,
+    businessId: params.businessId,
+    entryId: "welcome-" + uuid().slice(0, 8), // placeholder entry ID for logging
+    customerId: null,
+    messageType: "welcome",
+    locale: params.locale,
+    templateVars: {
+      customerName: params.customerName,
+      ticketNumber: "N/A",
+      queueName: "N/A",
       businessName: params.businessName,
     },
   });
