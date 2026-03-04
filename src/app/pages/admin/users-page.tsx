@@ -11,10 +11,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useAuthStore } from "../../stores/auth-store";
 import { api } from "../../lib/api";
 import { toast } from "sonner";
-import {
-  Card,
-  CardContent,
-} from "../../components/ui/card";
+import { Card, CardContent } from "../../components/ui/card";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
@@ -86,7 +83,7 @@ export function UsersPage() {
     setLoading(true);
     const { data, error } = await api<{ customers: Customer[] }>(
       `/customers/${businessId}`,
-      { accessToken }
+      { accessToken },
     );
     if (error) {
       toast.error(error);
@@ -185,7 +182,8 @@ export function UsersPage() {
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Customers</h1>
           <p className="text-muted-foreground text-sm">
-            {customers.length} {customers.length === 1 ? "customer" : "customers"} in your business
+            {customers.length}{" "}
+            {customers.length === 1 ? "customer" : "customers"} in your business
           </p>
         </div>
 
@@ -226,7 +224,8 @@ export function UsersPage() {
                 No customers found
               </h3>
               <p className="text-sm text-muted-foreground mt-1 max-w-sm">
-                Customers will appear here once they join a queue at your business. Share your queue link to start getting customers!
+                Customers will appear here once they join a queue at your
+                business. Share your queue link to start getting customers!
               </p>
             </div>
           </CardContent>
@@ -259,15 +258,18 @@ export function UsersPage() {
                         Phone Number
                       </span>
                     </th>
-                    <th className="text-right font-medium text-muted-foreground px-4 py-3">
+                    {/* <th className="text-right font-medium text-muted-foreground px-4 py-3">
                       Actions
-                    </th>
+                    </th> */}
                   </tr>
                 </thead>
                 <tbody>
                   {filteredCustomers.length === 0 ? (
                     <tr>
-                      <td colSpan={4} className="text-center py-12 text-muted-foreground">
+                      <td
+                        colSpan={4}
+                        className="text-center py-12 text-muted-foreground"
+                      >
                         No customers match your search
                       </td>
                     </tr>
@@ -312,7 +314,7 @@ export function UsersPage() {
                         </td>
 
                         {/* Actions */}
-                        <td className="px-4 py-3">
+                        {/* <td className="px-4 py-3">
                           <div className="flex items-center justify-end gap-1">
                             <Button
                               size="sm"
@@ -333,7 +335,7 @@ export function UsersPage() {
                               <Trash2 className="h-3.5 w-3.5" />
                             </Button>
                           </div>
-                        </td>
+                        </td> */}
                       </tr>
                     ))
                   )}
@@ -345,7 +347,8 @@ export function UsersPage() {
             {filteredCustomers.length > 0 && (
               <div className="px-4 py-3 border-t border-border bg-muted/10">
                 <p className="text-xs text-muted-foreground">
-                  Showing {filteredCustomers.length} of {customers.length} customers
+                  Showing {filteredCustomers.length} of {customers.length}{" "}
+                  customers
                 </p>
               </div>
             )}
@@ -409,7 +412,11 @@ export function UsersPage() {
             <Button variant="outline" onClick={() => setEditOpen(false)}>
               Cancel
             </Button>
-            <Button onClick={handleEditSave} disabled={editSaving} className="gap-1.5">
+            <Button
+              onClick={handleEditSave}
+              disabled={editSaving}
+              className="gap-1.5"
+            >
               {editSaving ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
               ) : (
@@ -429,7 +436,9 @@ export function UsersPage() {
           <AlertDialogHeader>
             <AlertDialogTitle>Delete Customer</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to delete <strong>{deleteCustomer?.name}</strong>? This action cannot be undone and will permanently remove the customer record.
+              Are you sure you want to delete{" "}
+              <strong>{deleteCustomer?.name}</strong>? This action cannot be
+              undone and will permanently remove the customer record.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

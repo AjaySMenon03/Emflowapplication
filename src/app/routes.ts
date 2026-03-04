@@ -18,6 +18,8 @@ import { CustomerGuard } from "./components/customer-guard";
 import { OnboardingGuard } from "./components/onboarding-guard";
 import { HomePage } from "./pages/public/home-page";
 import { LoginPage } from "./pages/public/login-page";
+import { ForgotPasswordPage } from "./pages/public/forgot-password-page";
+import { UpdatePasswordPage } from "./pages/public/update-password-page";
 import { JoinPage } from "./pages/public/join-page";
 import { StatusPage } from "./pages/public/status-page";
 import { OnboardingPage } from "./pages/onboarding/onboarding-page";
@@ -44,6 +46,8 @@ export const router = createBrowserRouter([
     children: [
       { index: true, Component: HomePage },
       { path: "login", Component: LoginPage },
+      { path: "forgot-password", Component: ForgotPasswordPage },
+      { path: "update-password", Component: UpdatePasswordPage },
     ],
   },
 

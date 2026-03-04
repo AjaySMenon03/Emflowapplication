@@ -607,6 +607,37 @@ export function QRStandPage() {
     ? `${window.location.origin}/join/${location.slug}`
     : "";
 
+  /**
+   * html2canvas does not support oklch() colors (used by shadcn/Tailwind CSS
+   * variables). This callback strips them from the cloned DOM before rendering.
+   */
+  const sanitizeClone = useCallback((_doc: Document, element: HTMLElement) => {
+    // Remove oklch values from CSS custom properties on all elements
+    const walker = element.querySelectorAll("*");
+    const fixElement = (el: HTMLElement) => {
+      const style = el.style;
+      for (let i = style.length - 1; i >= 0; i--) {
+        const prop = style[i];
+        const val = style.getPropertyValue(prop);
+        if (val && val.includes("oklch(")) {
+          style.setProperty(prop, "transparent");
+        }
+      }
+    };
+    fixElement(element);
+    walker.forEach((el) => fixElement(el as HTMLElement));
+
+    // Also strip oklch from all <style> tags and stylesheets in the cloned doc
+    _doc.querySelectorAll("style").forEach((styleEl) => {
+      if (styleEl.textContent && styleEl.textContent.includes("oklch(")) {
+        styleEl.textContent = styleEl.textContent.replace(
+          /oklch\([^)]*\)/g,
+          "transparent"
+        );
+      }
+    });
+  }, []);
+
   // ── Export as PNG ──
   const exportPNG = useCallback(async () => {
     if (!standRef.current) return;
@@ -619,6 +650,7 @@ export function QRStandPage() {
         logging: false,
         width: 1080,
         height: 1920,
+        onclone: sanitizeClone,
       });
       const link = document.createElement("a");
       link.download = `qr-stand-${location?.slug || "emflow"}-${isDark ? "dark" : "light"}.png`;
@@ -630,7 +662,7 @@ export function QRStandPage() {
       toast.error(t("qr.downloadError"));
     }
     setExporting(null);
-  }, [location, isDark, t]);
+  }, [location, isDark, t, sanitizeClone]);
 
   // ── Export as PDF ──
   const exportPDF = useCallback(async () => {
@@ -644,6 +676,7 @@ export function QRStandPage() {
         logging: false,
         width: 1080,
         height: 1920,
+        onclone: sanitizeClone,
       });
       const imgData = canvas.toDataURL("image/png", 1.0);
       // A4 portrait in mm: 210 x 297
@@ -660,7 +693,7 @@ export function QRStandPage() {
       toast.error(t("qr.downloadError"));
     }
     setExporting(null);
-  }, [location, isDark, t]);
+  }, [location, isDark, t, sanitizeClone]);
 
   // Copy join URL
   const copyUrl = useCallback(() => {
@@ -802,11 +835,10 @@ export function QRStandPage() {
               <div className="flex gap-3">
                 <button
                   onClick={() => setIsDark(false)}
-                  className={`flex-1 rounded-xl border-2 p-3 transition-all ${
-                    !isDark
+                  className={`flex-1 rounded-xl border-2 p-3 transition-all ${!isDark
                       ? "border-primary ring-2 ring-primary/20"
                       : "border-border hover:border-muted-foreground/50"
-                  }`}
+                    }`}
                 >
                   <div className="h-16 rounded-lg bg-white border border-gray-200 mb-2 flex items-center justify-center">
                     <Sun className="h-5 w-5 text-amber-500" />
@@ -815,11 +847,10 @@ export function QRStandPage() {
                 </button>
                 <button
                   onClick={() => setIsDark(true)}
-                  className={`flex-1 rounded-xl border-2 p-3 transition-all ${
-                    isDark
+                  className={`flex-1 rounded-xl border-2 p-3 transition-all ${isDark
                       ? "border-primary ring-2 ring-primary/20"
                       : "border-border hover:border-muted-foreground/50"
-                  }`}
+                    }`}
                 >
                   <div className="h-16 rounded-lg bg-slate-900 border border-slate-700 mb-2 flex items-center justify-center">
                     <Moon className="h-5 w-5 text-slate-300" />
@@ -844,11 +875,10 @@ export function QRStandPage() {
                   <button
                     key={preset.value}
                     onClick={() => setAccentColor(preset.value)}
-                    className={`group flex flex-col items-center gap-1.5 rounded-lg p-2 transition-all ${
-                      accentColor === preset.value
+                    className={`group flex flex-col items-center gap-1.5 rounded-lg p-2 transition-all ${accentColor === preset.value
                         ? "ring-2 ring-primary bg-accent"
                         : "hover:bg-accent/50"
-                    }`}
+                      }`}
                   >
                     <div
                       className="h-8 w-8 rounded-full shadow-sm transition-transform group-hover:scale-110"
