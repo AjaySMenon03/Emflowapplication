@@ -602,7 +602,7 @@ export async function createQueueEntry(params: {
       entry.location_id,
       "entry_created",
       entry
-    ).catch(() => {});
+    ).catch(() => { });
     return entry;
   });
 }
@@ -666,7 +666,7 @@ export async function calculateETA(
   const serviceTime = queueType?.estimated_service_time || 10;
 
   const { position } = await calculatePosition(entryId);
-  const estimatedMinutes = Math.max(0, (position - 1) * serviceTime);
+  const estimatedMinutes = Math.max(0, position * serviceTime);
   const eta = new Date(Date.now() + estimatedMinutes * 60 * 1000);
 
   return { estimatedMinutes, estimatedTime: eta.toISOString() };
@@ -717,7 +717,7 @@ export async function callNext(params: {
     if (currentlyServing) {
       throw new Error(
         `Customer ${currentlyServing.ticket_number} is actively being served. ` +
-          `Mark them as served or no-show before calling the next.`
+        `Mark them as served or no-show before calling the next.`
       );
     }
 
@@ -776,7 +776,7 @@ export async function callNext(params: {
         entry.location_id,
         "entry_called",
         entry
-      ).catch(() => {});
+      ).catch(() => { });
       await writeAuditLog({
         locationId: entry.location_id,
         businessId: entry.business_id,
@@ -839,7 +839,7 @@ export async function startServing(
       entry.location_id,
       "entry_serving",
       entry
-    ).catch(() => {});
+    ).catch(() => { });
     await writeAuditLog({
       locationId: entry.location_id,
       businessId: entry.business_id,
@@ -898,7 +898,7 @@ export async function markServed(entryId: string): Promise<QueueEntry> {
       entry.location_id,
       "entry_served",
       entry
-    ).catch(() => {});
+    ).catch(() => { });
     await writeAuditLog({
       locationId: entry.location_id,
       businessId: entry.business_id,
@@ -959,7 +959,7 @@ export async function markNoShow(entryId: string): Promise<QueueEntry> {
       entry.location_id,
       "entry_noshow",
       entry
-    ).catch(() => {});
+    ).catch(() => { });
     await writeAuditLog({
       locationId: entry.location_id,
       businessId: entry.business_id,
@@ -1011,7 +1011,7 @@ export async function cancelEntry(entryId: string): Promise<QueueEntry> {
       entry.location_id,
       "entry_cancelled",
       entry
-    ).catch(() => {});
+    ).catch(() => { });
     await writeAuditLog({
       locationId: entry.location_id,
       businessId: entry.business_id,
@@ -1104,7 +1104,7 @@ export async function moveEntry(
       entry.location_id,
       "entry_moved",
       entry
-    ).catch(() => {});
+    ).catch(() => { });
     await writeAuditLog({
       locationId: entry.location_id,
       businessId: entry.business_id,
@@ -1177,7 +1177,7 @@ export async function reassignStaff(
       entry.location_id,
       "entry_reassigned",
       entry
-    ).catch(() => {});
+    ).catch(() => { });
     await writeAuditLog({
       locationId: entry.location_id,
       businessId: entry.business_id,
@@ -1970,7 +1970,7 @@ export async function cancelEntryEnhanced(
       return { cancelled: fresh, promoted };
     }
   ).then(async (result) => {
-    await broadcastChange(entry.business_id, entry.location_id, "entry_cancelled", result.cancelled).catch(() => {});
+    await broadcastChange(entry.business_id, entry.location_id, "entry_cancelled", result.cancelled).catch(() => { });
     const actorName = staffAuthUid ? await getStaffName(staffAuthUid) : "Customer";
     await writeAuditLog({
       locationId: entry.location_id, businessId: entry.business_id, eventType: "CANCELLED",
@@ -1980,7 +1980,7 @@ export async function cancelEntryEnhanced(
       details: wasNext ? "Cancelled while in NEXT status" : undefined,
     });
     if (result.promoted) {
-      await broadcastChange(result.promoted.business_id, result.promoted.location_id, "entry_called", result.promoted).catch(() => {});
+      await broadcastChange(result.promoted.business_id, result.promoted.location_id, "entry_called", result.promoted).catch(() => { });
       await writeAuditLog({
         locationId: result.promoted.location_id, businessId: result.promoted.business_id,
         eventType: "CALLED_NEXT", actorName: "System", actorId: null,
@@ -2071,7 +2071,7 @@ export async function processAutoNoShows(
         entryId: staleEntry.id, sessionId: staleEntry.queue_session_id,
         details: `Auto no-show after ${timeoutMinutes} min in NEXT status`,
       });
-      await broadcastChange(staleEntry.business_id, staleEntry.location_id, "entry_noshow", staleEntry).catch(() => {});
+      await broadcastChange(staleEntry.business_id, staleEntry.location_id, "entry_noshow", staleEntry).catch(() => { });
     } catch {
       // skip
     }
@@ -2129,7 +2129,7 @@ export async function markPreviousAsServed(params: {
 
     return fresh;
   }).then(async (entry) => {
-    await broadcastChange(entry.business_id, entry.location_id, "entry_served", entry).catch(() => {});
+    await broadcastChange(entry.business_id, entry.location_id, "entry_served", entry).catch(() => { });
     const staffName = await getStaffName(staffAuthUid);
     await writeAuditLog({
       locationId: entry.location_id, businessId: entry.business_id,

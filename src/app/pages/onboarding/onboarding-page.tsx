@@ -5,7 +5,10 @@
 import { useState } from "react";
 import { useNavigate } from "react-router";
 import { useAuthStore } from "../../stores/auth-store";
-import { useOnboardingStore, ONBOARDING_STEPS } from "../../stores/onboarding-store";
+import {
+  useOnboardingStore,
+  ONBOARDING_STEPS,
+} from "../../stores/onboarding-store";
 import { api } from "../../lib/api";
 import { supabase } from "../../lib/supabase";
 import { Card, CardContent } from "../../components/ui/card";
@@ -37,29 +40,18 @@ import {
   ArrowLeft,
 } from "lucide-react";
 
-const STEP_ICONS = [Building2, MapPin, ListOrdered, Clock, MessageCircle, Users];
-
-const INDUSTRIES = [
-  "Healthcare",
-  "Government",
-  "Banking & Finance",
-  "Retail",
-  "Education",
-  "Telecommunications",
-  "Hospitality",
-  "Other",
+const STEP_ICONS = [
+  Building2,
+  MapPin,
+  ListOrdered,
+  Clock,
+  MessageCircle,
+  Users,
 ];
 
-const TIMEZONES = [
-  "Europe/Istanbul",
-  "Europe/London",
-  "Europe/Berlin",
-  "America/New_York",
-  "America/Chicago",
-  "America/Los_Angeles",
-  "Asia/Dubai",
-  "Asia/Tokyo",
-];
+const INDUSTRIES = ["Healthcare", "Saloon", "Hospitality"];
+
+const TIMEZONES = Intl.supportedValuesOf("timeZone");
 
 export function OnboardingPage() {
   const navigate = useNavigate();
@@ -165,7 +157,8 @@ export function OnboardingPage() {
 
       if (store.currentStep === 3) {
         const validQueues = store.queueTypes.filter((qt) => qt.name.trim());
-        if (validQueues.length === 0) throw new Error("Add at least one queue type");
+        if (validQueues.length === 0)
+          throw new Error("Add at least one queue type");
         const { error: apiError } = await api("/onboarding/queue-types", {
           method: "POST",
           accessToken,
@@ -207,7 +200,7 @@ export function OnboardingPage() {
       if (store.currentStep === 6) {
         // Staff is optional — only submit if there are entries
         const validStaff = store.staffMembers.filter(
-          (s) => s.name.trim() && s.email.trim()
+          (s) => s.name.trim() && s.email.trim(),
         );
         if (validStaff.length > 0) {
           const { error: apiError } = await api("/onboarding/staff", {
@@ -275,7 +268,9 @@ export function OnboardingPage() {
             <Zap className="h-5 w-5 text-primary-foreground" />
           </div>
           <span className="text-lg text-foreground font-medium">EM Flow</span>
-          <span className="text-muted-foreground text-sm ml-2">Setup Wizard</span>
+          <span className="text-muted-foreground text-sm ml-2">
+            Setup Wizard
+          </span>
         </div>
       </div>
 
@@ -448,7 +443,9 @@ function StepBusiness() {
           <Input
             placeholder="123 Main Street, City"
             value={store.businessAddress}
-            onChange={(e) => store.updateField("businessAddress", e.target.value)}
+            onChange={(e) =>
+              store.updateField("businessAddress", e.target.value)
+            }
           />
         </div>
       </div>
@@ -499,7 +496,9 @@ function StepLocation() {
           <Input
             placeholder="456 Branch Street"
             value={store.locationAddress}
-            onChange={(e) => store.updateField("locationAddress", e.target.value)}
+            onChange={(e) =>
+              store.updateField("locationAddress", e.target.value)
+            }
           />
         </div>
         <div className="space-y-2">
@@ -581,7 +580,11 @@ function StepQueueTypes() {
                   maxLength={3}
                   value={qt.prefix}
                   onChange={(e) =>
-                    store.updateQueueType(i, "prefix", e.target.value.toUpperCase())
+                    store.updateQueueType(
+                      i,
+                      "prefix",
+                      e.target.value.toUpperCase(),
+                    )
                   }
                 />
               </div>
@@ -595,7 +598,7 @@ function StepQueueTypes() {
                     store.updateQueueType(
                       i,
                       "estimatedServiceTime",
-                      parseInt(e.target.value) || 10
+                      parseInt(e.target.value) || 10,
                     )
                   }
                 />
@@ -721,7 +724,8 @@ function StepStaff() {
         <div>
           <h2>Add Staff Members</h2>
           <p className="text-muted-foreground text-sm mt-1">
-            Invite team members. This step is optional — you can add staff later.
+            Invite team members. This step is optional — you can add staff
+            later.
           </p>
         </div>
         <Button variant="outline" size="sm" onClick={store.addStaffMember}>
@@ -786,9 +790,7 @@ function StepStaff() {
                   <Label className="text-xs">Role</Label>
                   <Select
                     value={sm.role}
-                    onValueChange={(v) =>
-                      store.updateStaffMember(i, "role", v)
-                    }
+                    onValueChange={(v) => store.updateStaffMember(i, "role", v)}
                   >
                     <SelectTrigger>
                       <SelectValue />

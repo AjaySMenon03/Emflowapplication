@@ -593,6 +593,98 @@ baseApp.get("/make-server-5252bcc1/public/location-by-id/:id", async (c) => {
 });
 
 // ══════════════════════════════════════════════
+// HELPER: Notify position-3 customer via WhatsApp
+// ══════════════════════════════════════════════
+
+/**
+ * After any position-changing event (call-next, cancel, no-show, mark-served),
+ * find the entry that is now at position 3 and send a hardcoded WhatsApp
+ * "Next" message to the fixed number.
+ */
+async function notifyPosition3ViaWhatsApp(
+  queueTypeId: string,
+  sessionId: string,
+) {
+  try {
+    const sessionEntryIds: string[] =
+      (await kv.get(`session_entries:${sessionId}`)) || [];
+
+    const waitingEntries: any[] = [];
+    for (const eid of sessionEntryIds) {
+      const e = await kv.get(`queue_entry:${eid}`);
+      if (e && e.queue_type_id === queueTypeId && e.status === "waiting") {
+        waitingEntries.push(e);
+      }
+    }
+
+    // Sort by priority DESC, position ASC, joined_at ASC (same as queue logic)
+    waitingEntries.sort((a: any, b: any) => {
+      if (b.priority !== a.priority) return b.priority - a.priority;
+      if ((a.position || 0) !== (b.position || 0))
+        return (a.position || 0) - (b.position || 0);
+      return new Date(a.joined_at).getTime() - new Date(b.joined_at).getTime();
+    });
+
+    // Position 3 = index 2 (0-based) — a good "near the front" threshold
+    if (waitingEntries.length >= 1) {
+      const pos3Entry = waitingEntries[0];
+      const positionInQueue = 1;
+
+      // Fetch queue type to get estimated_service_time for ETA calculation
+      const queueType = await kv.get(`queue_type:${queueTypeId}`);
+      const serviceTime = queueType?.estimated_service_time || 10; // default 10 min/person
+      const estimatedWaitMinutes = positionInQueue * serviceTime;
+
+      console.log(
+        `[WhatsApp Position3] Entry ${pos3Entry.ticket_number} (${pos3Entry.customer_name}) is now at position ${positionInQueue}. ETA: ~${estimatedWaitMinutes} min. Sending alert.`,
+      );
+
+      // @ts-ignore: Deno global
+      const twilioSid = Deno.env.get("TWILIO_ACCOUNT_SID");
+      // @ts-ignore: Deno global
+      const twilioToken = Deno.env.get("TWILIO_AUTH_TOKEN");
+
+      if (twilioSid && twilioToken) {
+        const twilioRes = await fetch(
+          `https://api.twilio.com/2010-04-01/Accounts/${twilioSid}/Messages.json`,
+          {
+            method: "POST",
+            headers: {
+              Authorization: `Basic ${btoa(`${twilioSid}:${twilioToken}`)}`,
+              "Content-Type": "application/x-www-form-urlencoded",
+            },
+            body: new URLSearchParams({
+              To: "whatsapp:+918547322997",
+              From: "whatsapp:+14155238886",
+              Body: ` Heads up, ${pos3Entry.customer_name || "Customer"} You're almost next in line.\n\n Your Position: #${positionInQueue}\n Estimated Wait: Approximately ${estimatedWaitMinutes} min\n\nPlease stay nearby — we'll call you shortly!`,
+            }),
+          },
+        );
+        const twilioJson = await twilioRes.json();
+        if (twilioRes.ok && twilioJson.sid) {
+          console.log(`[WhatsApp Position3] Sent! SID: ${twilioJson.sid}`);
+        } else {
+          console.error(
+            `[WhatsApp Position3] API error:`,
+            twilioJson.message || twilioJson,
+          );
+        }
+      } else {
+        console.error(
+          "[WhatsApp Position3] Missing TWILIO_ACCOUNT_SID or TWILIO_AUTH_TOKEN",
+        );
+      }
+    } else {
+      console.log(
+        `[WhatsApp Position3] Less than 3 waiting entries, no notification needed.`,
+      );
+    }
+  } catch (err: any) {
+    console.error(`[WhatsApp Position3] Failed: ${err.message}`);
+  }
+}
+
+// ══════════════════════════════════════════════
 // QUEUE: Customer Join (public — no auth)
 // ══════════════════════════════════════════════
 
@@ -743,6 +835,49 @@ baseApp.post("/make-server-5252bcc1/public/queue/join", async (c) => {
 
     const position = await queueLogic.calculatePosition(entry.id);
     const eta = await queueLogic.calculateETA(entry.id);
+
+    // Build tracking link for the customer to check their live position
+    const trackingLink = `http://localhost:5173/status/${entry.id}`;
+
+    // ── Hardcoded WhatsApp welcome (bypasses all feature flags) ──
+    try {
+      // @ts-ignore: Deno global
+      const twilioSid = Deno.env.get("TWILIO_ACCOUNT_SID");
+      // @ts-ignore: Deno global
+      const twilioToken = Deno.env.get("TWILIO_AUTH_TOKEN");
+      if (twilioSid && twilioToken) {
+        const twilioRes = await fetch(
+          `https://api.twilio.com/2010-04-01/Accounts/${twilioSid}/Messages.json`,
+          {
+            method: "POST",
+            headers: {
+              Authorization: `Basic ${btoa(`${twilioSid}:${twilioToken}`)}`,
+              "Content-Type": "application/x-www-form-urlencoded",
+            },
+            body: new URLSearchParams({
+              To: "whatsapp:+918547322997",
+              From: "whatsapp:+14155238886",
+              Body: ` Welcome, ${name.trim()}! You've successfully joined the queue.\n\n Your Position: #${position.position}\n Estimated Wait: Approximately ${eta.estimatedMinutes} min\n\n Track your live status here:\n${trackingLink}\n\nWe'll notify you when it's your turn. Stay nearby!`,
+            }),
+          },
+        );
+        const twilioJson = await twilioRes.json();
+        if (twilioRes.ok && twilioJson.sid) {
+          console.log(`[WhatsApp Welcome] Sent! SID: ${twilioJson.sid}`);
+        } else {
+          console.error(
+            `[WhatsApp Welcome] API error:`,
+            twilioJson.message || twilioJson,
+          );
+        }
+      } else {
+        console.error(
+          "[WhatsApp Welcome] Missing TWILIO_ACCOUNT_SID or TWILIO_AUTH_TOKEN",
+        );
+      }
+    } catch (whatsappErr: any) {
+      console.error(`[WhatsApp Welcome] Failed: ${whatsappErr.message}`);
+    }
 
     // Send WhatsApp confirmation (async, non-blocking)
     if (phone) {
@@ -928,6 +1063,14 @@ baseApp.post("/make-server-5252bcc1/queue/call-next", async (c) => {
           console.log(`[WhatsApp call-next] Error: ${err.message}`),
         );
     }
+
+    // Check if any entry is now at position 3 and send "Next" WhatsApp (async, non-blocking)
+    notifyPosition3ViaWhatsApp(
+      entry.queue_type_id,
+      entry.queue_session_id,
+    ).catch((err: any) =>
+      console.error(`[Position3 notify] Error: ${err.message}`),
+    );
 
     return c.json({ entry });
   } catch (err) {
