@@ -12,8 +12,6 @@ const baseApp = new Hono();
 
 // ── Helpers ──
 
-// ── Helpers ──
-
 function supabaseAdmin() {
   return createClient(
     Deno.env.get("SUPABASE_URL"),
