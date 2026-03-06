@@ -699,81 +699,15 @@ async function notifyPosition3ViaWhatsApp(
 baseApp.post("/public/queue/join", async (c) => {
   try {
     const body = await c.req.json();
-    let { queueTypeId, locationId, businessId, name, phone, email, locale, serviceId } =
-      body;
+    let { queueTypeId, locationId, businessId, name, phone, email, locale, serviceId } = body;
 
-    if (!locationId || !businessId) {
-      return c.json({ error: "locationId and businessId are required" }, 400);
-    }
-    if (!queueTypeId && !serviceId) {
-      return c.json({ error: "Either queueTypeId or serviceId is required" }, 400);
-    }
-    if (!name?.trim()) {
-      return c.json({ error: "Name is required" }, 400);
-    }
+    if (!locationId || !businessId) return c.json({ error: "locationId and businessId are required" }, 400);
+    if (!serviceId) return c.json({ error: "serviceId is required" }, 400);
+    if (!name?.trim()) return c.json({ error: "Name is required" }, 400);
 
-    let resolvedServiceName: string | null = null;
-    if (serviceId && !queueTypeId) {
-      const svc = await kv.get(`service:${serviceId}`);
-      if (!svc || svc.status !== "active") {
-        return c.json({ error: "Service not found or inactive" }, 404);
-      }
-      resolvedServiceName = svc.name;
-      const allQueueTypes = await queueLogic.getQueueTypesForLocation(locationId, businessId);
-      const matchingQt = allQueueTypes.find((qt: any) =>
-        qt.status === "active" && (qt.service_ids || []).includes(serviceId)
-      );
-      if (!matchingQt) {
-        return c.json({ error: "No counter available for this service" }, 404);
-      }
-      queueTypeId = matchingQt.id;
-    } else if (serviceId && queueTypeId) {
-      const svc = await kv.get(`service:${serviceId}`);
-      if (svc) resolvedServiceName = svc.name;
-    }
-
-    const emergencyState = await kv.get(`emergency:${locationId}`);
-    if (emergencyState?.paused) {
-      return c.json(
-        { error: "We're temporarily not accepting new walk-ins.", code: "QUEUE_PAUSED" },
-        403,
-      );
-    }
-
-    const { session: smartSession, businessHours } =
-      await queueLogic.getOrCreateTodaySessionSmart(queueTypeId, locationId, businessId);
-
-    if (!businessHours.isOpen) {
-      return c.json(
-        { error: `Queue is currently closed. ${businessHours.reason || ""}`.trim(), code: "OUTSIDE_BUSINESS_HOURS", businessHours },
-        403,
-      );
-    }
-
-    if (phone) {
-      const duplicate = await queueLogic.checkDuplicateEntry({ locationId, customerPhone: phone, customerId: null });
-      if (duplicate) {
-        return c.json({ error: `Active entry (${duplicate.ticket_number}) exists.`, code: "DUPLICATE_ENTRY", existingEntry: duplicate }, 409);
-      }
-    }
-
-    // Capacity checks
-    const allQueueTypesForLoc = await queueLogic.getQueueTypesForLocation(locationId, businessId);
-    const activeQueueTypes = allQueueTypesForLoc.filter(qt => qt.status === "active");
-    const totalBusinessCapacity = activeQueueTypes.reduce((sum, qt) => sum + (qt.max_capacity || 100), 0);
-    const locationEntries = await queueLogic.getLocationEntries(locationId);
-    const todayStr = queueLogic.today();
-    const activeIssuedTickets = locationEntries.filter(e =>
-      e.joined_at.startsWith(todayStr) && ["waiting", "next", "serving", "served"].includes(e.status)
-    ).length;
-
-    const shouldWaitlist = activeIssuedTickets >= totalBusinessCapacity;
-    let waitlistNumber: number | undefined;
-    if (shouldWaitlist) waitlistNumber = (activeIssuedTickets - totalBusinessCapacity) + 1;
-
-    if (smartSession.status === "closed" || smartSession.status === "archived") {
-      return c.json({ error: "Queue session is closed.", code: "SESSION_CLOSED" }, 403);
-    }
+    const svc = await kv.get(`service:${serviceId}`);
+    if (!svc || svc.status !== "active") return c.json({ error: "Service not found or inactive" }, 404);
+    const resolvedServiceName = svc.name;
 
     const authUser = await getAuthUser(c);
     const authUserId: string | null = authUser?.id || null;
@@ -799,12 +733,45 @@ baseApp.post("/public/queue/join", async (c) => {
       });
     }
 
-    const entry = await queueLogic.createQueueEntry({
-      queueTypeId, locationId, businessId, customerId, customerName: name.trim(),
-      customerPhone: phone || null, serviceId: serviceId || null, serviceName: resolvedServiceName || null,
-      status: shouldWaitlist ? "waitlisted" : "waiting",
-      ticketNumber: shouldWaitlist ? `WL${waitlistNumber}` : undefined,
-      waitlistNumber: shouldWaitlist ? waitlistNumber : undefined,
+    const allQueueTypesForLoc = await queueLogic.getQueueTypesForLocation(locationId, businessId);
+    const activeQueueTypes = allQueueTypesForLoc.filter(qt => qt.status === "active");
+    const compatibleCounters = activeQueueTypes.filter(qt => (qt.service_ids || []).includes(serviceId));
+
+    if (compatibleCounters.length === 0) return c.json({ error: "No counter available for this service." }, 404);
+
+    const todayStr = queueLogic.today();
+    const decisionLockKey = `join_lock:${locationId}:${todayStr}`;
+
+    const { entry, shouldWaitlist } = await queueLogic.withTransaction(decisionLockKey, async () => {
+      const locationEntries = await queueLogic.getLocationEntries(locationId);
+      const activeEntriesToday = locationEntries.filter(e => e.joined_at.startsWith(todayStr));
+
+      const counterLoads = compatibleCounters.map(qt => {
+        const entriesForThisCounter = activeEntriesToday.filter(e => e.queue_type_id === qt.id);
+        const confirmedLoad = entriesForThisCounter.filter(e => ["waiting", "next", "serving"].includes(e.status)).length;
+        const waitlistLoad = entriesForThisCounter.filter(e => e.status === "waitlisted").length;
+        return { qt, confirmedLoad, waitlistLoad, capacity: qt.max_capacity || 1, isUnderCapacity: confirmedLoad < (qt.max_capacity || 1) };
+      });
+
+      const underCapacity = counterLoads.filter(l => l.isUnderCapacity);
+      let chosenCounter;
+      let waitlist = false;
+
+      if (underCapacity.length > 0) {
+        chosenCounter = underCapacity.reduce((prev, curr) => curr.confirmedLoad < prev.confirmedLoad ? curr : prev);
+      } else {
+        chosenCounter = counterLoads.reduce((prev, curr) => curr.waitlistLoad < prev.waitlistLoad ? curr : prev);
+        waitlist = true;
+      }
+
+      const createdEntry = await queueLogic.createQueueEntry({
+        queueTypeId: chosenCounter.qt.id, locationId, businessId, customerId, customerName: name.trim(),
+        customerPhone: phone || null, serviceId, serviceName: resolvedServiceName,
+        status: waitlist ? "waitlisted" : "waiting",
+        waitlistNumber: waitlist ? (chosenCounter.waitlistLoad + 1) : undefined,
+        notes: body.notes || null,
+      });
+      return { entry: createdEntry, shouldWaitlist: waitlist };
     });
 
     if (authUserId) {
@@ -812,7 +779,6 @@ baseApp.post("/public/queue/join", async (c) => {
       existingEntries.push(entry.id);
       await kv.set(`customer_entries:${authUserId}`, existingEntries);
     }
-
     if (customerId) {
       const bizCustomers: string[] = (await kv.get(`business_customers:${businessId}`)) || [];
       if (!bizCustomers.includes(customerId)) {
@@ -825,7 +791,7 @@ baseApp.post("/public/queue/join", async (c) => {
     const eta = await queueLogic.calculateETA(entry.id);
     const trackingLink = `http://localhost:5173/status/${entry.id}`;
 
-    // ── RESTORED HARDCODED WHATSAPP LOGIC (FIX) ──
+    // WhatsApp
     try {
       const twilioSid = Deno.env.get("TWILIO_ACCOUNT_SID");
       const twilioToken = Deno.env.get("TWILIO_AUTH_TOKEN");
@@ -833,57 +799,19 @@ baseApp.post("/public/queue/join", async (c) => {
         const messageBody = shouldWaitlist
           ? `Hello ${name.trim()}, the queue is at full capacity. You are on the WAITING LIST.\n\n Waitlist Number: ${entry.ticket_number}\n\nWe'll notify you if a slot opens. Track here:\n${trackingLink}`
           : `Welcome, ${name.trim()}! Your slot is CONFIRMED.\n\n Position: #${position.position}\n ETA: ~${eta.estimatedMinutes} min\n\n Track here:\n${trackingLink}`;
-        await fetch(
-          `https://api.twilio.com/2010-04-01/Accounts/${twilioSid}/Messages.json`,
-          {
-            method: "POST",
-            headers: {
-              Authorization: `Basic ${btoa(`${twilioSid}:${twilioToken}`)}`,
-              "Content-Type": "application/x-www-form-urlencoded",
-            },
-            body: new URLSearchParams({
-              To: "whatsapp:+918547322997",
-              From: "whatsapp:+14155238886",
-              Body: messageBody,
-            }),
-          },
-        );
-        console.log("[WhatsApp] Restored hardcoded welcome message sent to test number");
+        await fetch(`https://api.twilio.com/2010-04-01/Accounts/${twilioSid}/Messages.json`, {
+          method: "POST", headers: { Authorization: `Basic ${btoa(`${twilioSid}:${twilioToken}`)}`, "Content-Type": "application/x-www-form-urlencoded" },
+          body: new URLSearchParams({ To: "whatsapp:+918547322997", From: "whatsapp:+14155238886", Body: messageBody }),
+        });
       }
-    } catch (whatsappErr: any) {
-      console.error(`[WhatsApp Hardcoded] Failed: ${whatsappErr.message}`);
-    }
-
-    // ── Smart Notifications (to the actual customer) ──
-    if (phone) {
-      const biz = await kv.get(`business:${businessId}`);
-      if (shouldWaitlist) {
-        whatsapp.sendWaitlistWelcome({
-          businessId, entryId: entry.id, customerId, phone, locale: locale || "en",
-          customerName: name.trim(), waitlistNumber: entry.ticket_number,
-          queueName: resolvedServiceName || entry.queue_type_name || "Queue", businessName: biz?.name,
-        }).catch(err => console.error(`[WhatsApp waitlist] Error: ${err.message}`));
-      } else {
-        whatsapp.sendJoinConfirmation({
-          businessId, entryId: entry.id, customerId, phone, locale: locale || "en",
-          customerName: name.trim(), ticketNumber: entry.ticket_number,
-          queueName: resolvedServiceName || entry.queue_type_name || "Queue",
-          position: position.position, estimatedMinutes: eta.estimatedMinutes, businessName: biz?.name,
-        }).catch(err => console.error(`[WhatsApp join] Error: ${err.message}`));
-      }
-    }
-
-    await queueLogic.logNotification({
-      entryId: entry.id, customerId, businessId, channel: "whatsapp", recipient: phone,
-      message: `Confirmation: ${entry.ticket_number} — Position #${position.position}, ~${eta.estimatedMinutes} min`,
-    });
+    } catch (whErr: any) { console.error(`[WhatsApp] ${whErr.message}`); }
 
     return c.json({
       entry, position: position.position, totalWaiting: position.total,
-      estimatedMinutes: eta.estimatedMinutes, businessHours, waitlisted: shouldWaitlist,
-      message: shouldWaitlist ? "You are in the waiting list." : "Hurray! Your slot is confirmed.",
+      estimatedMinutes: eta.estimatedMinutes, waitlisted: shouldWaitlist,
+      message: shouldWaitlist ? "You are on the waiting list." : "Your slot is confirmed.",
     });
-  } catch (err) {
+  } catch (err: any) {
     return c.json({ error: `Queue join failed: ${err.message}` }, 500);
   }
 });

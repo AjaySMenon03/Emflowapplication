@@ -400,9 +400,9 @@ export function StatusPage() {
             <p className="text-xs uppercase tracking-wider text-muted-foreground mb-1">
               {data.entry.queue_type_name || "Queue"}
             </p>
-            <h1 className={`text-5xl font-bold tracking-tight ${config.color} mb-2`}>
+            {/* <h1 className={`text-5xl font-bold tracking-tight ${config.color} mb-2`}>
               {data.entry.ticket_number}
-            </h1>
+            </h1> */}
             <p className="text-foreground font-medium">{config.title}</p>
             <p className="text-muted-foreground text-sm mt-1">
               {config.message}

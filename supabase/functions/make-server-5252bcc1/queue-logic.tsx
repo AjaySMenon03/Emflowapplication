@@ -363,7 +363,7 @@ class TransactionBatch {
  * Execute `fn` inside a lock, with a TransactionBatch that is
  * committed only on success. On error the batch is discarded (rollback).
  */
-async function withTransaction<T>(
+export async function withTransaction<T>(
   lockKey: string,
   fn: (batch: TransactionBatch) => Promise<T>
 ): Promise<T> {
@@ -512,54 +512,30 @@ export async function createQueueEntry(params: {
   if (queueType.status !== "active")
     throw new Error(`Queue type "${queueType.name}" is not active`);
 
-  // ── Duplicate prevention ──
-  const duplicate = await checkDuplicateEntry({
-    locationId,
-    customerPhone,
-    customerId,
-  });
-  if (duplicate) {
-    throw new Error(
-      `DUPLICATE_ENTRY: Customer already has an active entry (${duplicate.ticket_number}) in this queue`
-    );
-  }
+  const duplicate = await checkDuplicateEntry({ locationId, customerPhone, customerId });
+  if (duplicate) throw new Error(`DUPLICATE_ENTRY: Active entry exists (${duplicate.ticket_number})`);
 
-  const session = await getOrCreateTodaySession(
-    queueTypeId,
-    locationId,
-    businessId
-  );
+  const session = await getOrCreateTodaySession(queueTypeId, locationId, businessId);
+  if (session.status === "closed") throw new Error(`Queue session is closed.`);
 
-  if (session.status === "closed") {
-    throw new Error(
-      `Queue session for today is closed. New entries cannot be added.`
-    );
-  }
-
-  const lockKey = `queue_lock:${session.id}`;
+  // Lock for the ENTIRE location during join to ensure Global Sequence consistency
+  const lockKey = `queue_lock:${locationId}:${today()}`;
 
   return await withTransaction<QueueEntry>(lockKey, async (batch) => {
-    // Re-read session inside lock for freshness
-    const freshSession: QueueSession = await kv.get(
-      `queue_session:${session.id}`
-    );
+    const freshSession: QueueSession = await kv.get(`queue_session:${session.id}`);
+    const sessionEntries: string[] = (await kv.get(`session_entries:${freshSession.id}`)) || [];
 
-    const sessionEntries: string[] =
-      (await kv.get(`session_entries:${freshSession.id}`)) || [];
-    const activeCount = await countActiveEntries(sessionEntries);
-
-
-    // Ticket Generation - General Queue logic: increment session-wide counter
     let ticketNumber = paramTicketNumber;
     if (!ticketNumber) {
       if (status === "waitlisted") {
-        ticketNumber = ticketNumber || `WL${waitlistNumber || 0}`;
+        ticketNumber = `WL${waitlistNumber || 1}`;
       } else {
-        freshSession.current_number += 1;
-        freshSession.updated_at = now();
-        ticketNumber = `${queueType.prefix || "Q"}${String(
-          freshSession.current_number
-        ).padStart(3, "0")}`;
+        // GLOBAL confirmed sequence across ALL counters in this location
+        const seqKey = `global_seq:${locationId}:${today()}`;
+        const currentGlobalSeq = (await kv.get(seqKey)) || 0;
+        const nextGlobalSeq = currentGlobalSeq + 1;
+        batch.set(seqKey, nextGlobalSeq);
+        ticketNumber = `#${nextGlobalSeq}`;
       }
     }
 
@@ -570,71 +546,40 @@ export async function createQueueEntry(params: {
       if (serviceId) {
         const svc = await kv.get(`service:${serviceId}`);
         if (svc && svc.average_service_time) newCustomerDuration = svc.average_service_time;
-      } else if (queueType && queueType.estimated_service_time) {
-        newCustomerDuration = queueType.estimated_service_time;
       }
       estimatedWait = backlogTime + newCustomerDuration;
     }
 
     const entryId = uuid();
     const entry: QueueEntry = {
-      id: entryId,
-      queue_session_id: freshSession.id,
-      queue_type_id: queueTypeId,
-      customer_id: customerId,
-      business_id: businessId,
-      location_id: locationId,
-      ticket_number: ticketNumber,
-      status,
-      priority,
-      // Position is activeCount + 1 for the WHOLE session
-      position: status === "waitlisted" ? 0 : activeCount + 1,
-      served_by: null,
-      joined_at: now(),
-      called_at: null,
-      served_at: null,
-      completed_at: null,
-      cancelled_at: null,
-      estimated_wait_minutes: estimatedWait,
-      notes: notes || null,
-      created_at: now(),
-      customer_name: customerName,
-      customer_phone: customerPhone,
-      queue_type_name: queueType.name,
-      queue_type_prefix: queueType.prefix,
-      service_id: serviceId,
-      service_name: serviceName,
-      waitlist_number: waitlistNumber,
+      id: entryId, queue_session_id: freshSession.id, queue_type_id: queueTypeId,
+      customer_id: customerId, business_id: businessId, location_id: locationId,
+      ticket_number: ticketNumber, status, priority,
+      position: status === "waitlisted" ? 0 : sessionEntries.length + 1,
+      joined_at: now(), created_at: now(), customer_name: customerName,
+      customer_phone: customerPhone, queue_type_name: queueType.name,
+      queue_type_prefix: queueType.prefix, service_id: serviceId,
+      service_name: serviceName, waitlist_number: waitlistNumber, notes,
+      served_by: null, called_at: null, served_at: null, completed_at: null,
+      cancelled_at: null, estimated_wait_minutes: estimatedWait,
     };
 
-    // Index updates
     sessionEntries.push(entryId);
-    const locationEntries: string[] =
-      (await kv.get(`location_entries:${locationId}`)) || [];
+    const locationEntries: string[] = (await kv.get(`location_entries:${locationId}`)) || [];
     locationEntries.push(entryId);
 
-    // Batch all writes
     batch.set(`queue_entry:${entryId}`, entry);
-    batch.set(`queue_session:${freshSession.id}`, freshSession);
     batch.set(`session_entries:${freshSession.id}`, sessionEntries);
     batch.set(`location_entries:${locationId}`, locationEntries);
 
     if (customerId) {
-      const custEntries: string[] =
-        (await kv.get(`customer_entries:${customerId}`)) || [];
+      const custEntries: string[] = (await kv.get(`customer_entries:${customerId}`)) || [];
       custEntries.push(entryId);
       batch.set(`customer_entries:${customerId}`, custEntries);
     }
-
     return entry;
   }).then(async (entry) => {
-    // Post-commit: broadcast (non-critical)
-    await broadcastChange(
-      entry.business_id,
-      entry.location_id,
-      "entry_created",
-      entry
-    ).catch(() => { });
+    await broadcastChange(entry.business_id, entry.location_id, "entry_created", entry).catch(() => { });
     return entry;
   });
 }
@@ -2134,65 +2079,54 @@ export async function promoteFromWaitlist(
   sessionId: string,
   queueTypeId: string
 ): Promise<QueueEntry | null> {
-  const lockKey = `queue_lock:${sessionId}:${queueTypeId}`;
+  const entry = await kv.get(`active_session_location:${sessionId}`); // We need locationId
+  // Get any entry from session to find locationId
+  const sessionEntryIds: string[] = (await kv.get(`session_entries:${sessionId}`)) || [];
+  let locationId = "";
+  if (sessionEntryIds.length > 0) {
+    const first = await kv.get(`queue_entry:${sessionEntryIds[0]}`);
+    if (first) locationId = first.location_id;
+  }
+  if (!locationId) return null;
+
+  const lockKey = `queue_lock:${locationId}:${today()}`;
 
   return await withTransaction<QueueEntry | null>(lockKey, async (batch) => {
-    // 1. Get all entries for this session
-    const sessionEntryIds: string[] = (await kv.get(`session_entries:${sessionId}`)) || [];
+    const freshSessionEntries: string[] = (await kv.get(`session_entries:${sessionId}`)) || [];
     const waitlisted: QueueEntry[] = [];
-    let activeTicketsCount = 0;
-
-    for (const eid of sessionEntryIds) {
+    for (const eid of freshSessionEntries) {
       const e = await kv.get(`queue_entry:${eid}`);
-      if (!e) continue;
-
-      if (e.queue_type_id === queueTypeId) {
-        if (e.status === "waitlisted") {
-          waitlisted.push(e);
-        } else if (["waiting", "next", "serving", "served"].includes(e.status)) {
-          activeTicketsCount++;
-        }
+      if (e && e.queue_type_id === queueTypeId && e.status === "waitlisted") {
+        waitlisted.push(e);
       }
     }
-
     if (waitlisted.length === 0) return null;
 
-    // 2. Fetch queue type for capacity check
-    const queueType = await kv.get(`queue_type:${queueTypeId}`);
-    if (!queueType) return null;
+    waitlisted.sort((a, b) => (a.waitlist_number || 0) - (b.waitlist_number || 0));
+    const candidate = waitlisted[0];
 
-    // Since we are promoting ONE person, we check if there's room.
-    // However, this function is usually called AFTER a cancellation, so there should be room.
-    // But let's be safe. Wait, the user said "Total Business Capacity".
-    // For now, let's assume if this is called, it's because a spot opened.
+    // GLOBAL confirmed sequence across ALL counters
+    const seqKey = `global_seq:${locationId}:${today()}`;
+    const currentGlobalSeq = (await kv.get(seqKey)) || 0;
+    const nextGlobalSeq = currentGlobalSeq + 1;
+    batch.set(seqKey, nextGlobalSeq);
 
-    // Sort waitlisted by waitlist_number or joined_at
-    waitlisted.sort((a, b) => (a.waitlist_number || 0) - (b.waitlist_number || 0) || new Date(a.joined_at).getTime() - new Date(b.joined_at).getTime());
+    candidate.status = "waiting";
+    candidate.ticket_number = `#${nextGlobalSeq}`;
+    candidate.waitlist_number = undefined;
+    candidate.joined_at = now();
 
-    const nextToPromote = waitlisted[0];
+    // Recalculate remaining waitlist for THIS counter
+    const remaining = waitlisted.slice(1);
+    for (let i = 0; i < remaining.length; i++) {
+      const r = remaining[i];
+      r.waitlist_number = i + 1;
+      r.ticket_number = `WL${r.waitlist_number}`;
+      batch.set(`queue_entry:${r.id}`, r);
+    }
 
-    // 3. Promote
-    const freshSession: QueueSession = await kv.get(`queue_session:${sessionId}`);
-    freshSession.current_number += 1;
-    freshSession.updated_at = now();
-
-    const newTicketNumber = `${queueType.prefix || "Q"}${String(freshSession.current_number).padStart(3, "0")}`;
-
-    nextToPromote.status = "waiting";
-    nextToPromote.ticket_number = newTicketNumber;
-    nextToPromote.waitlist_number = undefined;
-    nextToPromote.joined_at = now(); // Reset joined_at to keep them at the end of the waiting list? 
-    // Actually, usually they get the NEWEST position.
-
-    // Recalculate position for this entry
-    // Need to find how many are currently 'waiting'
-    const currentWaitingCount = (await getSessionEntries(sessionId)).filter(e => e.queue_type_id === queueTypeId && e.status === "waiting").length;
-    nextToPromote.position = currentWaitingCount + 1;
-
-    batch.set(`queue_entry:${nextToPromote.id}`, nextToPromote);
-    batch.set(`queue_session:${sessionId}`, freshSession);
-
-    return nextToPromote;
+    batch.set(`queue_entry:${candidate.id}`, candidate);
+    return candidate;
   }).then(async (entry) => {
     if (entry) {
       await broadcastChange(entry.business_id, entry.location_id, "entry_joined", entry).catch(() => { });
@@ -2202,36 +2136,18 @@ export async function promoteFromWaitlist(
         customerName: entry.customer_name, ticketNumber: entry.ticket_number,
         queueTypeName: entry.queue_type_name, queueTypeId: entry.queue_type_id,
         entryId: entry.id, sessionId: entry.queue_session_id,
-        details: "Automatically promoted from waitlist after a spot opened up",
+        details: "Automatically promoted from waitlist with new global sequence",
       });
 
-      // Notify via WhatsApp
       if (entry.customer_phone) {
         const biz = await kv.get(`business:${entry.business_id}`);
-        // For locale, try to get it from customer if possible, or default to en
-        let locale: any = "en";
-        if (entry.customer_id) {
-          const customer = await kv.get(`customer:${entry.customer_id}`);
-          if (customer && (customer.preferred_language || customer.preferred_locale)) {
-            locale = customer.preferred_language || customer.preferred_locale;
-          }
-        }
-
         const eta = await calculateETA(entry.id);
-
         await whatsapp.sendWaitlistConfirmed({
-          businessId: entry.business_id,
-          entryId: entry.id,
-          customerId: entry.customer_id,
-          phone: entry.customer_phone,
-          locale,
-          customerName: entry.customer_name || "Customer",
-          ticketNumber: entry.ticket_number,
-          queueName: entry.queue_type_name || "Queue",
-          position: entry.position || 1,
-          estimatedMinutes: eta.estimatedMinutes,
-          businessName: biz?.name,
-        }).catch(err => console.error(`[promoteFromWaitlist WhatsApp] Error: ${err.message}`));
+          businessId: entry.business_id, entryId: entry.id, customerId: entry.customer_id,
+          phone: entry.customer_phone, locale: "en", customerName: entry.customer_name || "Customer",
+          ticketNumber: entry.ticket_number, queueName: entry.queue_type_name || "Queue",
+          position: 1, estimatedMinutes: eta.estimatedMinutes, businessName: biz?.name,
+        }).catch(() => { });
 
         // ── RESTORED HARDCODED WHATSAPP LOGIC (FIX) ──
         try {
@@ -2239,7 +2155,7 @@ export async function promoteFromWaitlist(
           const twilioToken = Deno.env.get("TWILIO_AUTH_TOKEN");
           if (twilioSid && twilioToken) {
             const trackingLink = `http://localhost:5173/status/${entry.id}`;
-            const messageBody = `Good news, ${entry.customer_name || "Customer"}! Your ticket is now CONFIRMED.\n\n Ticket Number: ${entry.ticket_number}\n Position: #${entry.position || 1}\n ETA: ~${eta.estimatedMinutes} min\n\n Track here:\n${trackingLink}`;
+            const messageBody = `Good news, ${entry.customer_name || "Customer"}! Your ticket is now CONFIRMED.\n\n Ticket Number: ${entry.ticket_number}\n Position: #1\n ETA: ~${eta.estimatedMinutes} min\n\n Track here:\n${trackingLink}`;
             await fetch(
               `https://api.twilio.com/2010-04-01/Accounts/${twilioSid}/Messages.json`,
               {
