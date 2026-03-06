@@ -122,6 +122,13 @@ const STATUS_CONFIG: Record<
     title: "Missed",
     message: "You were called but didn't arrive. Please rejoin if needed.",
   },
+  waitlisted: {
+    color: "text-amber-600 dark:text-amber-400",
+    bg: "bg-amber-500/10",
+    icon: Clock,
+    title: "You're in Waiting list",
+    message: "The maximum customer count is reached. You are in the waiting list. If any of the confirmed customers is no-show or canceled, you will be considered as next.",
+  },
 };
 
 export function StatusPage() {
@@ -323,7 +330,7 @@ export function StatusPage() {
   const status = data.entry.status;
   const config = STATUS_CONFIG[status] || STATUS_CONFIG.waiting;
   const StatusIcon = config.icon;
-  const isActive = status === "waiting" || status === "next" || status === "serving";
+  const isActive = status === "waiting" || status === "next" || status === "serving" || status === "waitlisted";
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-primary/5 to-background">
@@ -403,7 +410,7 @@ export function StatusPage() {
           </div>
 
           {/* Stats */}
-          {isActive && (
+          {isActive && status !== "waitlisted" && (
             <CardContent className="p-0">
               <div className="grid grid-cols-2 divide-x divide-border">
                 <div className="px-6 py-5 text-center">
@@ -479,7 +486,7 @@ export function StatusPage() {
             )}
           </Button>
 
-          {status === "waiting" && (
+          {(status === "waiting" || status === "waitlisted") && (
             <Button
               variant="outline"
               className="flex-1 border-destructive/30 text-destructive hover:bg-destructive/10"

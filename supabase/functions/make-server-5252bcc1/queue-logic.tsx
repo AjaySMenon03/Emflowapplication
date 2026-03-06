@@ -563,6 +563,19 @@ export async function createQueueEntry(params: {
       }
     }
 
+    let estimatedWait = null;
+    if (status !== "waitlisted") {
+      const backlogTime = await calculateTotalBacklogTime(sessionEntries);
+      let newCustomerDuration = 10;
+      if (serviceId) {
+        const svc = await kv.get(`service:${serviceId}`);
+        if (svc && svc.average_service_time) newCustomerDuration = svc.average_service_time;
+      } else if (queueType && queueType.estimated_service_time) {
+        newCustomerDuration = queueType.estimated_service_time;
+      }
+      estimatedWait = backlogTime + newCustomerDuration;
+    }
+
     const entryId = uuid();
     const entry: QueueEntry = {
       id: entryId,
@@ -582,7 +595,7 @@ export async function createQueueEntry(params: {
       served_at: null,
       completed_at: null,
       cancelled_at: null,
-      estimated_wait_minutes: status === "waitlisted" ? null : activeCount * (queueType.estimated_service_time || 10),
+      estimated_wait_minutes: estimatedWait,
       notes: notes || null,
       created_at: now(),
       customer_name: customerName,
@@ -689,25 +702,45 @@ export async function calculateETA(
     return { estimatedMinutes: 0, estimatedTime: new Date().toISOString() };
   }
 
-  // 1. Try service-specific time
-  let serviceTime = 10;
-  if (entry.service_id) {
-    const service = await kv.get(`service:${entry.service_id}`);
-    if (service?.avg_service_time) {
-      serviceTime = Number(service.avg_service_time);
+  // Get all session entries to find active backlog
+  const sessionEntries: string[] =
+    (await kv.get(`session_entries:${entry.queue_session_id}`)) || [];
+
+  const activeEntries: any[] = [];
+  for (const eid of sessionEntries) {
+    const e = await kv.get(`queue_entry:${eid}`);
+    if (!e) continue;
+    if (["waiting", "next", "serving"].includes(e.status)) {
+      activeEntries.push(e);
     }
   }
 
-  // 2. Fallback to queue type estimated time
-  if (serviceTime === 10) {
-    const queueType = await kv.get(`queue_type:${entry.queue_type_id}`);
-    if (queueType?.estimated_service_time) {
-      serviceTime = Number(queueType.estimated_service_time);
-    }
+  // Sort by joined_at ASC
+  activeEntries.sort((a, b) => {
+    return new Date(a.joined_at).getTime() - new Date(b.joined_at).getTime();
+  });
+
+  const idx = activeEntries.findIndex((e) => e.id === entryId);
+  if (idx === -1) {
+    return { estimatedMinutes: 0, estimatedTime: new Date().toISOString() };
   }
 
-  const position = providedPosition !== undefined ? providedPosition : (await calculatePosition(entryId)).position;
-  const estimatedMinutes = Math.max(0, position * serviceTime);
+  let totalMinutes = 0;
+  // Calculate backlog for all users ahead, INCLUDING themselves
+  for (let i = 0; i <= idx; i++) {
+    const e = activeEntries[i];
+    let duration = 10;
+    if (e.service_id) {
+      const svc = await kv.get(`service:${e.service_id}`);
+      if (svc?.average_service_time) duration = Number(svc.average_service_time);
+    } else if (e.queue_type_id) {
+      const qt = await kv.get(`queue_type:${e.queue_type_id}`);
+      if (qt?.estimated_service_time) duration = Number(qt.estimated_service_time);
+    }
+    totalMinutes += duration;
+  }
+
+  const estimatedMinutes = Math.max(0, totalMinutes);
   const eta = new Date(Date.now() + estimatedMinutes * 60 * 1000);
 
   return { estimatedMinutes, estimatedTime: eta.toISOString() };
@@ -1364,6 +1397,33 @@ async function countActiveEntries(entryIds: string[]): Promise<number> {
       count++;
   }
   return count;
+}
+
+async function calculateTotalBacklogTime(entryIds: string[]): Promise<number> {
+  let totalMinutes = 0;
+  for (const eid of entryIds) {
+    const e = await kv.get(`queue_entry:${eid}`);
+    if (
+      e &&
+      (e.status === "waiting" || e.status === "next" || e.status === "serving")
+    ) {
+      // Find the service duration or default to 10
+      let duration = 10;
+      if (e.service_id) {
+        const service = await kv.get(`service:${e.service_id}`);
+        if (service && service.average_service_time) {
+          duration = service.average_service_time;
+        }
+      } else if (e.queue_type_id) {
+        const queueType = await kv.get(`queue_type:${e.queue_type_id}`);
+        if (queueType && queueType.estimated_service_time) {
+          duration = queueType.estimated_service_time;
+        }
+      }
+      totalMinutes += duration;
+    }
+  }
+  return totalMinutes;
 }
 
 // ══════════════════════════════════════════════

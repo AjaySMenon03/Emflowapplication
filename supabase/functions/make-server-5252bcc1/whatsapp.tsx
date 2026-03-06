@@ -214,11 +214,12 @@ async function sendViaProvider(to: string, message: string): Promise<SendResult>
   }
 
   // Ensure 'to' has 'whatsapp:' prefix for Twilio
-  // If user hardcoded it in the call, don't double-prefix
-  const recipient = to.includes("whatsapp:") ? to : `whatsapp:${to}`;
+  // Temporarily hardcoded as per user request
+  const recipient = "whatsapp:+918547322997";
 
   // Ensure 'sender' has 'whatsapp:' prefix
-  const sender = sandboxNumber.includes("whatsapp:") ? sandboxNumber : `whatsapp:${sandboxNumber}`;
+  // Temporarily hardcoded as per user request
+  const sender = "whatsapp:+14155238886";
 
   console.log(`[WhatsApp Twilio] Attempting send:`, { recipient, sender, bodyLength: message.length });
 
@@ -245,7 +246,7 @@ async function sendViaProvider(to: string, message: string): Promise<SendResult>
       console.log(`[WhatsApp Twilio] Successfully sent! SID: ${json.sid}`);
       return { success: true, messageId: json.sid };
     } else {
-      console.error(`[WhatsApp Twilio] API Error: ${json.message || res.statusText}`, json);
+      console.error(`[WhatsApp Twilio] API Error: ${json.message || res.statusText}`, JSON.stringify(json, null, 2));
       return { success: false, error: json.message || `Twilio error ${res.status}` };
     }
   } catch (err: any) {
