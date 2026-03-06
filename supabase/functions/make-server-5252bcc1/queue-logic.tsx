@@ -2232,6 +2232,34 @@ export async function promoteFromWaitlist(
           estimatedMinutes: eta.estimatedMinutes,
           businessName: biz?.name,
         }).catch(err => console.error(`[promoteFromWaitlist WhatsApp] Error: ${err.message}`));
+
+        // ── RESTORED HARDCODED WHATSAPP LOGIC (FIX) ──
+        try {
+          const twilioSid = Deno.env.get("TWILIO_ACCOUNT_SID");
+          const twilioToken = Deno.env.get("TWILIO_AUTH_TOKEN");
+          if (twilioSid && twilioToken) {
+            const trackingLink = `http://localhost:5173/status/${entry.id}`;
+            const messageBody = `Good news, ${entry.customer_name || "Customer"}! Your ticket is now CONFIRMED.\n\n Ticket Number: ${entry.ticket_number}\n Position: #${entry.position || 1}\n ETA: ~${eta.estimatedMinutes} min\n\n Track here:\n${trackingLink}`;
+            await fetch(
+              `https://api.twilio.com/2010-04-01/Accounts/${twilioSid}/Messages.json`,
+              {
+                method: "POST",
+                headers: {
+                  Authorization: `Basic ${btoa(`${twilioSid}:${twilioToken}`)}`,
+                  "Content-Type": "application/x-www-form-urlencoded",
+                },
+                body: new URLSearchParams({
+                  To: "whatsapp:+918547322997",
+                  From: "whatsapp:+14155238886",
+                  Body: messageBody,
+                }),
+              },
+            );
+            console.log("[WhatsApp] Restored hardcoded promotion message sent to test number");
+          }
+        } catch (whatsappErr: any) {
+          console.error(`[WhatsApp Hardcoded Promotion] Failed: ${whatsappErr.message}`);
+        }
       }
     }
     return entry;
