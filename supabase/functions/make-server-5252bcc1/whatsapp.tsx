@@ -17,7 +17,7 @@ import * as kv from "./kv_store.tsx";
 
 // ── Types ──
 
-export type MessageType = "confirmation" | "your_turn" | "no_show" | "cancelled" | "welcome";
+export type MessageType = "confirmation" | "your_turn" | "no_show" | "cancelled" | "welcome" | "waitlist_welcome" | "waitlist_confirmed";
 export type SupportedLocale = "en" | "hi" | "ta" | "ml";
 
 export interface WhatsAppPayload {
@@ -73,6 +73,12 @@ const templates: Record<SupportedLocale, Record<MessageType, (v: WhatsAppPayload
 
     welcome: (v) =>
       `Hello ${v.customerName}, welcome to EMFlow! We are excited to serve you at ${v.businessName || "our business"}.`,
+
+    waitlist_welcome: (v) =>
+      `Hello ${v.customerName}! The maximum customer count is reached. You are in the waiting list. If any of the confirmed customers is a no-show or canceled, you will be considered as next.\n\nWaitlist Number: *${v.ticketNumber}*\nService: ${v.queueName}\n\n— ${v.businessName || "EM Flow"}`,
+
+    waitlist_confirmed: (v) =>
+      `Hurray ${v.customerName}! Your slot is confirmed. Your current position is #${v.position ?? "..."} and your estimated wait time is ~${v.estimatedMinutes ?? "..."} minutes.\n\nTicket: *${v.ticketNumber}*\nService: ${v.queueName}\n\n— ${v.businessName || "EM Flow"}`,
   },
 
   hi: {
@@ -90,6 +96,12 @@ const templates: Record<SupportedLocale, Record<MessageType, (v: WhatsAppPayload
 
     welcome: (v) =>
       `नमस्ते ${v.customerName}, EMFlow में आपका स्वागत है! ${v.businessName || "हम"} आपकी सेवा करने के लिए उत्साहित हैं।`,
+
+    waitlist_welcome: (v) =>
+      `नमस्ते ${v.customerName}! ग्राहकों की अधिकतम संख्या पूरी हो गई है। आप प्रतीक्षा सूची में हैं। यदि कोई पुष्ट ग्राहक नहीं आता है या रद्द कर देता है, तो आपको अगला माना जाएगा।\n\nप्रतीक्षा संख्या: *${v.ticketNumber}*\nसेवा: ${v.queueName}\n\n— ${v.businessName || "EM Flow"}`,
+
+    waitlist_confirmed: (v) =>
+      `खुशखबरी ${v.customerName}! आपका स्लॉट पुष्ट हो गया है। आपकी वर्तमान स्थिति #${v.position ?? "..."} है और आपका अनुमानित प्रतीक्षा समय ~${v.estimatedMinutes ?? "..."} मिनट है।\n\nटिकट: *${v.ticketNumber}*\nसेवा: ${v.queueName}\n\n— ${v.businessName || "EM Flow"}`,
   },
 
   ta: {
@@ -107,6 +119,12 @@ const templates: Record<SupportedLocale, Record<MessageType, (v: WhatsAppPayload
 
     welcome: (v) =>
       `வணக்கம் ${v.customerName}, EMFlow-க்கு உங்களை வரவேற்கிறோம்! ${v.businessName || "நாங்கள்"} உங்களுக்கு சேவை செய்ய மகிழ்ச்சியடைகிறோம்.`,
+
+    waitlist_welcome: (v) =>
+      `வணக்கம் ${v.customerName}! அதிகபட்ச வாடிக்கையாளர் எண்ணிக்கை எட்டப்பட்டது. நீங்கள் காத்திருப்புப் பட்டியலில் உள்ளீர்கள். உறுதிப்படுத்தப்பட்ட வாடிக்கையாளர்கள் யாராவது வராமல் இருந்தால் அல்லது ரத்து செய்தால், நீங்கள் அடுத்ததாகக் கருதப்படுவீர்கள்.\n\nகாத்திருப்பு எண்: *${v.ticketNumber}*\nசேவை: ${v.queueName}\n\n— ${v.businessName || "EM Flow"}`,
+
+    waitlist_confirmed: (v) =>
+      `வாழ்த்துக்கள் ${v.customerName}! உங்கள் ஸ்லாட் உறுதிப்படுத்தப்பட்டது. உங்கள் தற்போதைய நிலை #${v.position ?? "..."} மற்றும் உங்கள் மதிப்பிடப்பட்ட காத்திருப்பு நேரம் ~${v.estimatedMinutes ?? "..."} நிமிடங்கள்.\n\nடிக்கெட்: *${v.ticketNumber}*\nசேவை: ${v.queueName}\n\n— ${v.businessName || "EM Flow"}`,
   },
 
   ml: {
@@ -124,6 +142,12 @@ const templates: Record<SupportedLocale, Record<MessageType, (v: WhatsAppPayload
 
     welcome: (v) =>
       `നമസ്കാരം ${v.customerName}! EMFlow-ലേക്ക് സ്വാഗതം. ${v.businessName || "ഞങ്ങൾ"} നിങ്ങളെ സേവിക്കുന്നതിൽ സന്തോഷിക്കുന്നു.`,
+
+    waitlist_welcome: (v) =>
+      `നമസ്കാരം ${v.customerName}! പരമാവധി ഉപഭോക്താക്കളുടെ എണ്ണം എത്തിക്കഴിഞ്ഞു. നിങ്ങൾ വെയിറ്റിംഗ് ലിസ്റ്റിലാണ്. സ്ഥിരീകരിച്ച ഉപഭോക്താക്കളാരെങ്കിലും വരാതിരിക്കുകയോ റദ്ദാക്കുകയോ ചെയ്താൽ, നിങ്ങളെ അടുത്തതായി പരിഗണിക്കും.\n\nവെയിറ്റിംഗ് നമ്പർ: *${v.ticketNumber}*\nസേവനം: ${v.queueName}\n\n— ${v.businessName || "EM Flow"}`,
+
+    waitlist_confirmed: (v) =>
+      `അഭിനന്ദനങ്ങൾ ${v.customerName}! നിങ്ങളുടെ സ്ലോട്ട് സ്ഥിരീകരിച്ചു. നിങ്ങളുടെ നിലവിലെ സ്ഥാനം #${v.position ?? "..."} ആണ്, ഏകദേശ കാത്തിരിപ്പ് സമയം ~${v.estimatedMinutes ?? "..."} മിനിറ്റാണ്.\n\nടിക്കറ്റ്: *${v.ticketNumber}*\nസേവനം: ${v.queueName}\n\n— ${v.businessName || "EM Flow"}`,
   },
 };
 
@@ -474,6 +498,70 @@ export async function sendWelcomeMessage(params: {
       customerName: params.customerName,
       ticketNumber: "N/A",
       queueName: "N/A",
+      businessName: params.businessName,
+    },
+  });
+}
+
+/**
+ * Convenience: Send waitlist welcome message.
+ */
+export async function sendWaitlistWelcome(params: {
+  businessId: string;
+  entryId: string;
+  customerId: string | null;
+  phone: string;
+  locale: SupportedLocale;
+  customerName: string;
+  waitlistNumber: string; // e.g. "WL1"
+  queueName: string;
+  businessName?: string;
+}): Promise<void> {
+  await sendNotification({
+    to: params.phone,
+    businessId: params.businessId,
+    entryId: params.entryId,
+    customerId: params.customerId,
+    messageType: "waitlist_welcome",
+    locale: params.locale,
+    templateVars: {
+      customerName: params.customerName,
+      ticketNumber: params.waitlistNumber,
+      queueName: params.queueName,
+      businessName: params.businessName,
+    },
+  });
+}
+
+/**
+ * Convenience: Send waitlist confirmation (promoted to confirmed).
+ */
+export async function sendWaitlistConfirmed(params: {
+  businessId: string;
+  entryId: string;
+  customerId: string | null;
+  phone: string;
+  locale: SupportedLocale;
+  customerName: string;
+  ticketNumber: string;
+  queueName: string;
+  position: number;
+  estimatedMinutes: number;
+  businessName?: string;
+}): Promise<void> {
+  await sendNotification({
+    to: params.phone,
+    businessId: params.businessId,
+    entryId: params.entryId,
+    customerId: params.customerId,
+    messageType: "waitlist_confirmed",
+    locale: params.locale,
+    templateVars: {
+      customerName: params.customerName,
+      ticketNumber: params.ticketNumber,
+      queueName: params.queueName,
+      position: params.position,
+      estimatedMinutes: params.estimatedMinutes,
       businessName: params.businessName,
     },
   });

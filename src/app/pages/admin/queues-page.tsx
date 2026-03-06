@@ -88,6 +88,7 @@ import {
   Sparkles,
   MoreHorizontal,
   UserPlus,
+  X,
 } from "lucide-react";
 
 // ── Types ──
@@ -1362,9 +1363,24 @@ function WaitingEntryCard({
                 </Badge>
               </div>
             </div>
-            <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground/40 group-hover:text-muted-foreground transition-colors">
-              <MoreHorizontal className="h-4 w-4" />
-            </Button>
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="destructive"
+                    size="icon"
+                    className="h-5 w-5 rounded-full hover:bg-red-600 border-none shadow-sm shadow-red-100 flex items-center justify-center shrink-0"
+                    onClick={onNoShow}
+                    disabled={isActionLoading}
+                  >
+                    <X className="h-4 w-4 text-white" strokeWidth={3} />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="top">
+                  <p className="text-[10px] font-bold uppercase tracking-widest">No-Show</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
           </div>
 
           <div className="grid grid-cols-2 gap-4 py-1">

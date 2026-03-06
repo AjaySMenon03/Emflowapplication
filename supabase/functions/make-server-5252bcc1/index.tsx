@@ -792,6 +792,26 @@ baseApp.post("/public/queue/join", async (c) => {
       }
     }
 
+    // ── Business-wide capacity check ──
+    const allQueueTypesForLoc = await queueLogic.getQueueTypesForLocation(locationId, businessId);
+    const activeQueueTypes = allQueueTypesForLoc.filter(qt => qt.status === "active");
+    const totalBusinessCapacity = activeQueueTypes.reduce((sum, qt) => sum + (qt.max_capacity || 100), 0);
+
+    const locationEntries = await queueLogic.getLocationEntries(locationId);
+    const todayStr = queueLogic.today();
+    // User rule: include waiting, next, serving, OR served. EXCLUDE cancelled and no_show.
+    // ALSO: Filter for entries joined TODAY to avoid counting previous days.
+    const activeIssuedTickets = locationEntries.filter(e =>
+      e.joined_at.startsWith(todayStr) && ["waiting", "next", "serving", "served"].includes(e.status)
+    ).length;
+
+    const shouldWaitlist = activeIssuedTickets >= totalBusinessCapacity;
+    let waitlistNumber: number | undefined;
+
+    if (shouldWaitlist) {
+      waitlistNumber = (activeIssuedTickets - totalBusinessCapacity) + 1;
+    }
+
     if (
       smartSession.status === "closed" ||
       smartSession.status === "archived"
@@ -851,6 +871,9 @@ baseApp.post("/public/queue/join", async (c) => {
       customerPhone: phone || null,
       serviceId: serviceId || null,
       serviceName: resolvedServiceName || null,
+      status: shouldWaitlist ? "waitlisted" : "waiting",
+      ticketNumber: shouldWaitlist ? `WL${waitlistNumber}` : undefined,
+      waitlistNumber: shouldWaitlist ? waitlistNumber : undefined,
     });
 
     // Track entry in customer_entries index for retention analytics
@@ -877,52 +900,23 @@ baseApp.post("/public/queue/join", async (c) => {
     // Build tracking link for the customer to check their live position
     const trackingLink = `http://localhost:5173/status/${entry.id}`;
 
-    // ── Hardcoded WhatsApp welcome (bypasses all feature flags) ──
-    try {
-      // @ts-ignore: Deno global
-      const twilioSid = Deno.env.get("TWILIO_ACCOUNT_SID");
-      // @ts-ignore: Deno global
-      const twilioToken = Deno.env.get("TWILIO_AUTH_TOKEN");
-      if (twilioSid && twilioToken) {
-        const twilioRes = await fetch(
-          `https://api.twilio.com/2010-04-01/Accounts/${twilioSid}/Messages.json`,
-          {
-            method: "POST",
-            headers: {
-              Authorization: `Basic ${btoa(`${twilioSid}:${twilioToken}`)}`,
-              "Content-Type": "application/x-www-form-urlencoded",
-            },
-            body: new URLSearchParams({
-              To: "whatsapp:+918547322997",
-              From: "whatsapp:+14155238886",
-              Body: ` Welcome, ${name.trim()}! You've successfully joined the queue.\n\n Your Position: #${position.position}\n Estimated Wait: Approximately ${eta.estimatedMinutes} min\n\n Track your live status here:\n${trackingLink}\n\nWe'll notify you when it's your turn. Stay nearby!`,
-            }),
-          },
-        );
-        const twilioJson = await twilioRes.json();
-        if (twilioRes.ok && twilioJson.sid) {
-          console.log(`[WhatsApp Welcome] Sent! SID: ${twilioJson.sid}`);
-        } else {
-          console.error(
-            `[WhatsApp Welcome] API error:`,
-            twilioJson.message || twilioJson,
-          );
-        }
-      } else {
-        console.error(
-          "[WhatsApp Welcome] Missing TWILIO_ACCOUNT_SID or TWILIO_AUTH_TOKEN",
-        );
-      }
-    } catch (whatsappErr: any) {
-      console.error(`[WhatsApp Welcome] Failed: ${whatsappErr.message}`);
-    }
-
-    // Send WhatsApp confirmation (async, non-blocking)
+    // ── WhatsApp Notifications (Smart) ──
     if (phone) {
-      const location = await kv.get(`location:${locationId}`);
-      const business = await kv.get(`business:${businessId}`);
-      whatsapp
-        .sendJoinConfirmation({
+      const biz = await kv.get(`business:${businessId}`);
+      if (shouldWaitlist) {
+        whatsapp.sendWaitlistWelcome({
+          businessId,
+          entryId: entry.id,
+          customerId,
+          phone,
+          locale: locale || "en",
+          customerName: name.trim(),
+          waitlistNumber: entry.ticket_number,
+          queueName: resolvedServiceName || entry.queue_type_name || "Queue",
+          businessName: biz?.name,
+        }).catch(err => console.error(`[WhatsApp waitlist] Error: ${err.message}`));
+      } else {
+        whatsapp.sendJoinConfirmation({
           businessId,
           entryId: entry.id,
           customerId,
@@ -930,26 +924,23 @@ baseApp.post("/public/queue/join", async (c) => {
           locale: locale || "en",
           customerName: name.trim(),
           ticketNumber: entry.ticket_number,
-          queueName: entry.queue_type_name || "Queue",
+          queueName: resolvedServiceName || entry.queue_type_name || "Queue",
           position: position.position,
           estimatedMinutes: eta.estimatedMinutes,
-          businessName: business?.name,
-          locationName: location?.name,
-        })
-        .catch((err: any) =>
-          console.log(`[WhatsApp join] Error: ${err.message}`),
-        );
-
-      // Also log via legacy notification log
-      await queueLogic.logNotification({
-        entryId: entry.id,
-        customerId,
-        businessId,
-        channel: "whatsapp",
-        recipient: phone,
-        message: `Confirmation: ${entry.ticket_number} — Position #${position.position}, ~${eta.estimatedMinutes} min`,
-      });
+          businessName: biz?.name,
+        }).catch(err => console.error(`[WhatsApp join] Error: ${err.message}`));
+      }
     }
+
+    // Also log via legacy notification log
+    await queueLogic.logNotification({
+      entryId: entry.id,
+      customerId,
+      businessId,
+      channel: "whatsapp",
+      recipient: phone,
+      message: `Confirmation: ${entry.ticket_number} — Position #${position.position}, ~${eta.estimatedMinutes} min`,
+    });
 
     return c.json({
       entry,
@@ -957,6 +948,10 @@ baseApp.post("/public/queue/join", async (c) => {
       totalWaiting: position.total,
       estimatedMinutes: eta.estimatedMinutes,
       businessHours,
+      waitlisted: shouldWaitlist,
+      message: shouldWaitlist
+        ? "The maximum customer count is reached. You are in the waiting list. If any of the confirmed customers is a no-show or canceled, you will be considered as next."
+        : "Hurray! Your slot is confirmed.",
     });
   } catch (err) {
     return c.json({ error: `Queue join failed: ${err.message}` }, 500);

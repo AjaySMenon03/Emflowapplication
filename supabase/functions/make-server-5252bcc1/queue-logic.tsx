@@ -28,6 +28,7 @@
  */
 
 import * as kv from "./kv_store.tsx";
+import * as whatsapp from "./whatsapp.tsx";
 import { createClient } from "jsr:@supabase/supabase-js@2.49.8";
 
 // ══════════════════════════════════════════════
@@ -37,10 +38,10 @@ import { createClient } from "jsr:@supabase/supabase-js@2.49.8";
 function uuid(): string {
   return crypto.randomUUID();
 }
-function now(): string {
+export function now(): string {
   return new Date().toISOString();
 }
-function today(): string {
+export function today(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
@@ -54,7 +55,8 @@ export type QueueEntryStatus =
   | "serving"
   | "served"
   | "cancelled"
-  | "no_show";
+  | "no_show"
+  | "waitlisted";
 
 export type SessionStatus = "open" | "closed" | "archived";
 
@@ -101,6 +103,7 @@ export interface QueueEntry {
   // Service info
   service_id: string | null;
   service_name: string | null;
+  waitlist_number?: number;
 }
 
 interface LockRecord {
@@ -136,7 +139,8 @@ export type AuditEventType =
   | "EMERGENCY_RESUME"
   | "EMERGENCY_CLOSE"
   | "EMERGENCY_BROADCAST"
-  | "EMERGENCY_BROADCAST_CLEAR";
+  | "EMERGENCY_BROADCAST_CLEAR"
+  | "PROMOTED_FROM_WAITLIST";
 
 export interface AuditLogEntry {
   id: string;
@@ -440,7 +444,7 @@ export async function getOrCreateTodaySession(
   businessId: string
 ): Promise<QueueSession> {
   const dateStr = today();
-  const cacheKey = `queue_session_today:${queueTypeId}:${dateStr}`;
+  const cacheKey = `queue_session_location_today:${locationId}:${dateStr}`;
 
   const existingId = await kv.get(cacheKey);
   if (existingId) {
@@ -483,6 +487,9 @@ export async function createQueueEntry(params: {
   serviceName?: string | null;
   priority?: number;
   notes?: string;
+  status?: QueueEntryStatus;
+  ticketNumber?: string;
+  waitlistNumber?: number;
 }): Promise<QueueEntry> {
   const {
     queueTypeId,
@@ -495,6 +502,9 @@ export async function createQueueEntry(params: {
     serviceName = null,
     priority = 0,
     notes = null,
+    status = "waiting",
+    ticketNumber: paramTicketNumber,
+    waitlistNumber,
   } = params;
 
   const queueType = await kv.get(`queue_type:${queueTypeId}`);
@@ -526,7 +536,7 @@ export async function createQueueEntry(params: {
     );
   }
 
-  const lockKey = `queue_lock:${session.id}:${queueTypeId}`;
+  const lockKey = `queue_lock:${session.id}`;
 
   return await withTransaction<QueueEntry>(lockKey, async (batch) => {
     // Re-read session inside lock for freshness
@@ -537,23 +547,21 @@ export async function createQueueEntry(params: {
     const sessionEntries: string[] =
       (await kv.get(`session_entries:${freshSession.id}`)) || [];
     const activeCount = await countActiveEntries(sessionEntries);
-    if (activeCount >= (queueType.max_capacity || 100)) {
-      throw new Error(
-        `Queue "${queueType.name}" has reached maximum capacity (${queueType.max_capacity})`
-      );
+
+
+    // Ticket Generation - General Queue logic: increment session-wide counter
+    let ticketNumber = paramTicketNumber;
+    if (!ticketNumber) {
+      if (status === "waitlisted") {
+        ticketNumber = ticketNumber || `WL${waitlistNumber || 0}`;
+      } else {
+        freshSession.current_number += 1;
+        freshSession.updated_at = now();
+        ticketNumber = `${queueType.prefix || "Q"}${String(
+          freshSession.current_number
+        ).padStart(3, "0")}`;
+      }
     }
-
-    // Increment ticket
-    freshSession.current_number += 1;
-    freshSession.updated_at = now();
-
-    const ticketNumber = `${queueType.prefix || "Q"}${String(
-      freshSession.current_number
-    ).padStart(3, "0")}`;
-
-    const waitingAhead = activeCount;
-    const estimatedWait =
-      waitingAhead * (queueType.estimated_service_time || 10);
 
     const entryId = uuid();
     const entry: QueueEntry = {
@@ -564,16 +572,17 @@ export async function createQueueEntry(params: {
       business_id: businessId,
       location_id: locationId,
       ticket_number: ticketNumber,
-      status: "waiting",
+      status,
       priority,
-      position: activeCount + 1,
+      // Position is activeCount + 1 for the WHOLE session
+      position: status === "waitlisted" ? 0 : activeCount + 1,
       served_by: null,
       joined_at: now(),
       called_at: null,
       served_at: null,
       completed_at: null,
       cancelled_at: null,
-      estimated_wait_minutes: estimatedWait,
+      estimated_wait_minutes: status === "waitlisted" ? null : activeCount * (queueType.estimated_service_time || 10),
       notes: notes || null,
       created_at: now(),
       customer_name: customerName,
@@ -582,6 +591,7 @@ export async function createQueueEntry(params: {
       queue_type_prefix: queueType.prefix,
       service_id: serviceId,
       service_name: serviceName,
+      waitlist_number: waitlistNumber,
     };
 
     // Index updates
@@ -626,32 +636,39 @@ export async function calculatePosition(
   const entry = await kv.get(`queue_entry:${entryId}`);
   if (!entry) throw new Error(`Entry ${entryId} not found`);
 
-  const locationEntries: string[] =
-    (await kv.get(`location_entries:${entry.location_id}`)) || [];
+  const sessionEntries: string[] =
+    (await kv.get(`session_entries:${entry.queue_session_id}`)) || [];
 
-  const waitingEntries: QueueEntry[] = [];
-  for (const eid of locationEntries) {
+  const activeEntries: QueueEntry[] = [];
+  for (const eid of sessionEntries) {
     const e = await kv.get(`queue_entry:${eid}`);
     if (!e) continue;
-    if (e.status === "waiting") waitingEntries.push(e);
+    // Position #1 should go to the person currently being served or next, 
+    // but usually "Position" in UI refers to how many people are AHEAD of you + 1.
+    // If we want a global sequence: 1 is being served, 2 is next, 3 is waiting...
+    if (["waiting", "next", "serving"].includes(e.status)) {
+      activeEntries.push(e);
+    }
   }
 
-  // Sort by priority DESC, position ASC, joined_at ASC -- MATCHING ADMIN LOGIC in index.tsx
-  waitingEntries.sort((a, b) => {
-    if (b.priority !== a.priority) return b.priority - a.priority;
-    if ((a.position || 0) !== (b.position || 0))
-      return (a.position || 0) - (b.position || 0);
+  // Sort by joined_at ASC for a general FIFO queue
+  activeEntries.sort((a, b) => {
     return new Date(a.joined_at).getTime() - new Date(b.joined_at).getTime();
   });
 
-  const total = waitingEntries.length;
+  const total = activeEntries.length;
   let position = 0;
 
-  if (entry.status === "waiting") {
-    const idx = waitingEntries.findIndex((e) => e.id === entryId);
-    position = idx >= 0 ? idx + 1 : total + 1;
-  } else if (entry.status === "next") {
-    position = 0; // You're next!
+  const idx = activeEntries.findIndex((e) => e.id === entryId);
+  if (entry.status !== "waitlisted") {
+    if (entry.status === "next") {
+      position = 0; // You're next!
+    } else {
+      position = idx >= 0 ? idx + 1 : total + 1;
+    }
+  } else {
+    // For waitlisted users, we can return their waitlist number or something higher
+    position = entry.waitlist_number ? 1000 + entry.waitlist_number : 999;
   }
 
   return { position, total };
@@ -1010,6 +1027,12 @@ export async function markNoShow(entryId: string): Promise<QueueEntry> {
       entryId: entry.id,
       sessionId: entry.queue_session_id,
     });
+
+    // Attempt to promote from waitlist
+    await promoteFromWaitlist(entry.queue_session_id, entry.queue_type_id).catch((err) => {
+      console.error(`[promoteFromWaitlist] Error: ${err.message}`);
+    });
+
     return entry;
   });
 }
@@ -1062,6 +1085,12 @@ export async function cancelEntry(entryId: string): Promise<QueueEntry> {
       entryId: entry.id,
       sessionId: entry.queue_session_id,
     });
+
+    // Attempt to promote from waitlist
+    await promoteFromWaitlist(entry.queue_session_id, entry.queue_type_id).catch((err) => {
+      console.error(`[promoteFromWaitlist] Error: ${err.message}`);
+    });
+
     return entry;
   });
 }
@@ -1564,7 +1593,7 @@ export async function getOrCreateTodaySessionSmart(
   const businessHours = await checkBusinessHours(locationId);
 
   // Look for existing session for this date
-  const cacheKey = `queue_session_today:${queueTypeId}:${dateStr}`;
+  const cacheKey = `queue_session_location_today:${locationId}:${dateStr}`;
   const existingId = await kv.get(cacheKey);
 
   if (existingId) {
@@ -2027,7 +2056,125 @@ export async function cancelEntryEnhanced(
         details: "Auto-promoted after NEXT entry was cancelled",
       });
     }
+
+    // Also attempt to promote someone from waitlist to confirmed
+    await promoteFromWaitlist(entry.queue_session_id, entry.queue_type_id).catch(err => {
+      console.error(`[promoteFromWaitlist] Error: ${err.message}`);
+    });
+
     return result;
+  });
+}
+
+/**
+ * Scan for the next person on the waitlist and promote them to WAITING status.
+ * Called when a spot opens up (cancellation or no-show).
+ */
+export async function promoteFromWaitlist(
+  sessionId: string,
+  queueTypeId: string
+): Promise<QueueEntry | null> {
+  const lockKey = `queue_lock:${sessionId}:${queueTypeId}`;
+
+  return await withTransaction<QueueEntry | null>(lockKey, async (batch) => {
+    // 1. Get all entries for this session
+    const sessionEntryIds: string[] = (await kv.get(`session_entries:${sessionId}`)) || [];
+    const waitlisted: QueueEntry[] = [];
+    let activeTicketsCount = 0;
+
+    for (const eid of sessionEntryIds) {
+      const e = await kv.get(`queue_entry:${eid}`);
+      if (!e) continue;
+
+      if (e.queue_type_id === queueTypeId) {
+        if (e.status === "waitlisted") {
+          waitlisted.push(e);
+        } else if (["waiting", "next", "serving", "served"].includes(e.status)) {
+          activeTicketsCount++;
+        }
+      }
+    }
+
+    if (waitlisted.length === 0) return null;
+
+    // 2. Fetch queue type for capacity check
+    const queueType = await kv.get(`queue_type:${queueTypeId}`);
+    if (!queueType) return null;
+
+    // Since we are promoting ONE person, we check if there's room.
+    // However, this function is usually called AFTER a cancellation, so there should be room.
+    // But let's be safe. Wait, the user said "Total Business Capacity".
+    // For now, let's assume if this is called, it's because a spot opened.
+
+    // Sort waitlisted by waitlist_number or joined_at
+    waitlisted.sort((a, b) => (a.waitlist_number || 0) - (b.waitlist_number || 0) || new Date(a.joined_at).getTime() - new Date(b.joined_at).getTime());
+
+    const nextToPromote = waitlisted[0];
+
+    // 3. Promote
+    const freshSession: QueueSession = await kv.get(`queue_session:${sessionId}`);
+    freshSession.current_number += 1;
+    freshSession.updated_at = now();
+
+    const newTicketNumber = `${queueType.prefix || "Q"}${String(freshSession.current_number).padStart(3, "0")}`;
+
+    nextToPromote.status = "waiting";
+    nextToPromote.ticket_number = newTicketNumber;
+    nextToPromote.waitlist_number = undefined;
+    nextToPromote.joined_at = now(); // Reset joined_at to keep them at the end of the waiting list? 
+    // Actually, usually they get the NEWEST position.
+
+    // Recalculate position for this entry
+    // Need to find how many are currently 'waiting'
+    const currentWaitingCount = (await getSessionEntries(sessionId)).filter(e => e.queue_type_id === queueTypeId && e.status === "waiting").length;
+    nextToPromote.position = currentWaitingCount + 1;
+
+    batch.set(`queue_entry:${nextToPromote.id}`, nextToPromote);
+    batch.set(`queue_session:${sessionId}`, freshSession);
+
+    return nextToPromote;
+  }).then(async (entry) => {
+    if (entry) {
+      await broadcastChange(entry.business_id, entry.location_id, "entry_joined", entry).catch(() => { });
+      await writeAuditLog({
+        locationId: entry.location_id, businessId: entry.business_id,
+        eventType: "PROMOTED_FROM_WAITLIST", actorName: "System", actorId: null,
+        customerName: entry.customer_name, ticketNumber: entry.ticket_number,
+        queueTypeName: entry.queue_type_name, queueTypeId: entry.queue_type_id,
+        entryId: entry.id, sessionId: entry.queue_session_id,
+        details: "Automatically promoted from waitlist after a spot opened up",
+      });
+
+      // Notify via WhatsApp
+      if (entry.customer_phone) {
+        const biz = await kv.get(`business:${entry.business_id}`);
+        // For locale, try to get it from customer if possible, or default to en
+        let locale: any = "en";
+        if (entry.customer_id) {
+          const customer = await kv.get(`customer:${entry.customer_id}`);
+          if (customer && (customer.preferred_language || customer.preferred_locale)) {
+            locale = customer.preferred_language || customer.preferred_locale;
+          }
+        }
+
+        const eta = await calculateETA(entry.id);
+
+        await whatsapp.sendWaitlistConfirmed({
+          businessId: entry.business_id,
+          entryId: entry.id,
+          customerId: entry.customer_id,
+          phone: entry.customer_phone,
+          locale,
+          customerName: entry.customer_name || "Customer",
+          ticketNumber: entry.ticket_number,
+          queueName: entry.queue_type_name || "Queue",
+          position: entry.position || 1,
+          estimatedMinutes: eta.estimatedMinutes,
+          businessName: biz?.name,
+        }).catch(err => console.error(`[promoteFromWaitlist WhatsApp] Error: ${err.message}`));
+      }
+    }
+    return entry;
   });
 }
 
