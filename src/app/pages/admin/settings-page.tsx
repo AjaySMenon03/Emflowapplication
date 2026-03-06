@@ -13,6 +13,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useLocaleStore } from "../../stores/locale-store";
 import { useAuthStore } from "../../stores/auth-store";
 import { api } from "../../lib/api";
+import { COUNTRIES } from "../../lib/countries";
 import { toast } from "sonner";
 import { BusinessHoursEditor } from "../../components/business-hours-editor";
 import {
@@ -29,6 +30,19 @@ import { Badge } from "../../components/ui/badge";
 import { Separator } from "../../components/ui/separator";
 import { Switch } from "../../components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../../components/ui/tabs";
+import { Textarea } from "../../components/ui/textarea";
+import { Checkbox } from "../../components/ui/checkbox";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "../../components/ui/tooltip";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "../../components/ui/popover";
 import {
   Select,
   SelectContent,
@@ -84,6 +98,7 @@ import {
   KeyRound,
   Eye,
   EyeOff,
+  Scissors,
 } from "lucide-react";
 
 // ── Types ──
@@ -96,8 +111,19 @@ interface QueueType {
   description: string | null;
   estimated_service_time: number;
   max_capacity: number;
+  service_ids: string[];
   status: string;
   sort_order: number;
+}
+
+interface Service {
+  id: string;
+  business_id: string;
+  name: string;
+  description: string | null;
+  avg_service_time: number;
+  status: string;
+  created_at: string;
 }
 
 interface StaffMember {
@@ -123,6 +149,7 @@ interface BusinessInfo {
   email: string | null;
   address: string | null;
   industry: string | null;
+  country?: string | null;
 }
 
 interface WhatsAppSettings {
@@ -160,6 +187,7 @@ export function SettingsPage() {
   const [selectedLocation, setSelectedLocation] = useState("");
   const [business, setBusiness] = useState<BusinessInfo | null>(null);
   const [queueTypes, setQueueTypes] = useState<QueueType[]>([]);
+  const [services, setServices] = useState<Service[]>([]);
   const [staff, setStaff] = useState<StaffMember[]>([]);
   const [whatsappSettings, setWhatsappSettings] = useState<WhatsAppSettings>({
     enabled: false,
@@ -170,11 +198,12 @@ export function SettingsPage() {
   useEffect(() => {
     if (!businessId || !accessToken) return;
     (async () => {
-      const [bizRes, locRes, staffRes, waRes] = await Promise.all([
+      const [bizRes, locRes, staffRes, waRes, svcRes] = await Promise.all([
         api<{ business: BusinessInfo }>(`/business/${businessId}`, { accessToken }),
         api<{ locations: LocationInfo[] }>(`/business/${businessId}/locations`, { accessToken }),
         api<{ staff: StaffMember[] }>(`/business/${businessId}/staff`, { accessToken }),
         api<{ settings: WhatsAppSettings }>(`/settings/whatsapp/${businessId}`, { accessToken }),
+        api<{ services: Service[] }>(`/settings/services/${businessId}`, { accessToken }),
       ]);
 
       if (bizRes.data?.business) setBusiness(bizRes.data.business);
@@ -185,6 +214,7 @@ export function SettingsPage() {
       }
       if (staffRes.data?.staff) setStaff(staffRes.data.staff);
       if (waRes.data?.settings) setWhatsappSettings(waRes.data.settings);
+      if (svcRes.data?.services) setServices(svcRes.data.services);
       setLoading(false);
     })();
   }, [businessId, accessToken]);
@@ -198,6 +228,15 @@ export function SettingsPage() {
     );
     if (data?.queueTypes) setQueueTypes(data.queueTypes);
   }, [selectedLocation, accessToken]);
+
+  const loadServices = useCallback(async () => {
+    if (!businessId || !accessToken) return;
+    const { data } = await api<{ services: Service[] }>(
+      `/settings/services/${businessId}`,
+      { accessToken }
+    );
+    if (data?.services) setServices(data.services);
+  }, [businessId, accessToken]);
 
   useEffect(() => {
     loadQueueTypes();
@@ -221,10 +260,14 @@ export function SettingsPage() {
       </div>
 
       <Tabs defaultValue="queues" className="space-y-6">
-        <TabsList className="grid w-full grid-cols-4 lg:w-auto lg:inline-grid">
+        <TabsList className="grid w-full grid-cols-5 lg:w-auto lg:inline-grid">
           <TabsTrigger value="queues" className="gap-1.5 text-xs sm:text-sm">
             <ListChecks className="h-3.5 w-3.5 hidden sm:inline" />
             Queue Types
+          </TabsTrigger>
+          <TabsTrigger value="services" className="gap-1.5 text-xs sm:text-sm">
+            <Scissors className="h-3.5 w-3.5 hidden sm:inline" />
+            Services
           </TabsTrigger>
           <TabsTrigger value="staff" className="gap-1.5 text-xs sm:text-sm">
             <Users className="h-3.5 w-3.5 hidden sm:inline" />
@@ -239,6 +282,53 @@ export function SettingsPage() {
             WhatsApp
           </TabsTrigger>
         </TabsList>
+
+        {/* ════════════════════════════════════════════ */}
+        {/* SERVICES TAB                                 */}
+        {/* ════════════════════════════════════════════ */}
+        <TabsContent value="services" className="space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-lg font-semibold tracking-tight">Services</h2>
+              <p className="text-sm text-muted-foreground">
+                Define the services your business offers
+              </p>
+            </div>
+            <AddServiceDialog
+              businessId={businessId || ""}
+              accessToken={accessToken || ""}
+              onCreated={loadServices}
+            />
+          </div>
+
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+            {services.length > 0 ? (
+              services
+                .filter(s => s.status === "active")
+                .map((svc) => (
+                  <ServiceCard
+                    key={svc.id}
+                    svc={svc}
+                    isOwner={isOwner}
+                    accessToken={accessToken || ""}
+                    onUpdated={loadServices}
+                  />
+                ))
+            ) : (
+              <Card className="md:col-span-2 lg:col-span-3 py-12 border-dashed">
+                <CardContent className="flex flex-col items-center justify-center text-center">
+                  <div className="h-12 w-12 rounded-full bg-muted flex items-center justify-center mb-4">
+                    <Scissors className="h-6 w-6 text-muted-foreground" />
+                  </div>
+                  <h3 className="font-medium text-lg">No services yet</h3>
+                  <p className="text-sm text-muted-foreground max-w-xs mt-1">
+                    Create your first service to start assigning them to queue types.
+                  </p>
+                </CardContent>
+              </Card>
+            )}
+          </div>
+        </TabsContent>
 
         {/* ════════════════════════════════════════════ */}
         {/* QUEUE TYPES TAB                             */}
@@ -267,6 +357,7 @@ export function SettingsPage() {
               locationId={selectedLocation}
               accessToken={accessToken || ""}
               onCreated={loadQueueTypes}
+              allServices={services}
             />
           </div>
 
@@ -297,6 +388,7 @@ export function SettingsPage() {
                     isOwner={!!isOwner}
                     accessToken={accessToken || ""}
                     onUpdated={loadQueueTypes}
+                    allServices={services}
                   />
                 ))}
             </div>
@@ -452,11 +544,13 @@ function QueueTypeCard({
   isOwner,
   accessToken,
   onUpdated,
+  allServices,
 }: {
   qt: QueueType;
   isOwner: boolean;
   accessToken: string;
   onUpdated: () => void;
+  allServices: Service[];
 }) {
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -465,6 +559,7 @@ function QueueTypeCard({
   const [estTime, setEstTime] = useState(String(qt.estimated_service_time));
   const [maxCap, setMaxCap] = useState(String(qt.max_capacity));
   const [desc, setDesc] = useState(qt.description || "");
+  const [selectedServiceIds, setSelectedServiceIds] = useState<string[]>(qt.service_ids || []);
 
   const handleSave = async () => {
     setSaving(true);
@@ -477,6 +572,7 @@ function QueueTypeCard({
         description: desc || null,
         estimatedServiceTime: parseInt(estTime) || 10,
         maxCapacity: parseInt(maxCap) || 100,
+        serviceIds: selectedServiceIds,
       },
     });
     if (error) {
@@ -531,6 +627,14 @@ function QueueTypeCard({
               <Label className="text-xs">Description</Label>
               <Input value={desc} onChange={(e) => setDesc(e.target.value)} placeholder="Optional" className="h-8 text-sm" />
             </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Services</Label>
+              <ServiceMultiSelect
+                allServices={allServices}
+                selectedIds={selectedServiceIds}
+                onChange={setSelectedServiceIds}
+              />
+            </div>
             <div className="flex gap-2 pt-1">
               <Button size="sm" onClick={handleSave} disabled={saving} className="flex-1">
                 {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5 mr-1" />}
@@ -562,6 +666,19 @@ function QueueTypeCard({
                     Max {qt.max_capacity}
                   </span>
                 </div>
+                {qt.service_ids && qt.service_ids.length > 0 && (
+                  <div className="flex flex-wrap gap-1 mt-2">
+                    {qt.service_ids.map(id => {
+                      const svc = allServices.find(s => s.id === id);
+                      if (!svc) return null;
+                      return (
+                        <Badge key={id} variant="outline" className="text-[10px] py-0 h-4 bg-primary/5 text-primary border-primary/20">
+                          {svc.name}
+                        </Badge>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             </div>
             <div className="flex items-center gap-1.5 mt-3 pt-3 border-t border-border">
@@ -611,10 +728,12 @@ function AddQueueTypeDialog({
   locationId,
   accessToken,
   onCreated,
+  allServices,
 }: {
   locationId: string;
   accessToken: string;
   onCreated: () => void;
+  allServices: Service[];
 }) {
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -623,6 +742,7 @@ function AddQueueTypeDialog({
   const [estTime, setEstTime] = useState("10");
   const [maxCap, setMaxCap] = useState("100");
   const [desc, setDesc] = useState("");
+  const [selectedServiceIds, setSelectedServiceIds] = useState<string[]>([]);
 
   const handleCreate = async () => {
     if (!name.trim()) return toast.error("Name is required");
@@ -637,6 +757,7 @@ function AddQueueTypeDialog({
         description: desc.trim() || null,
         estimatedServiceTime: parseInt(estTime) || 10,
         maxCapacity: parseInt(maxCap) || 100,
+        serviceIds: selectedServiceIds,
       },
     });
     if (error) {
@@ -649,6 +770,7 @@ function AddQueueTypeDialog({
       setEstTime("10");
       setMaxCap("100");
       setDesc("");
+      setSelectedServiceIds([]);
       onCreated();
     }
     setSaving(false);
@@ -693,6 +815,14 @@ function AddQueueTypeDialog({
           <div className="space-y-1.5">
             <Label>Description</Label>
             <Input value={desc} onChange={(e) => setDesc(e.target.value)} placeholder="Optional description" />
+          </div>
+          <div className="space-y-1.5">
+            <Label>Supported Services</Label>
+            <ServiceMultiSelect
+              allServices={allServices}
+              selectedIds={selectedServiceIds}
+              onChange={setSelectedServiceIds}
+            />
           </div>
         </div>
         <DialogFooter>
@@ -1235,6 +1365,7 @@ function BusinessProfileForm({
   const [email, setEmail] = useState(business.email || "");
   const [address, setAddress] = useState(business.address || "");
   const [industry, setIndustry] = useState(business.industry || "");
+  const [country, setCountry] = useState(business.country || "");
 
   const handleSave = async () => {
     setSaving(true);
@@ -1243,7 +1374,7 @@ function BusinessProfileForm({
       {
         method: "PUT",
         accessToken,
-        body: { name, phone: phone || null, email: email || null, address: address || null, industry: industry || null },
+        body: { name, phone: phone || null, email: email || null, address: address || null, industry: industry || null, country: country || null },
       }
     );
     if (error) {
@@ -1269,6 +1400,21 @@ function BusinessProfileForm({
           <div className="space-y-1.5">
             <Label>Business Name</Label>
             <Input value={name} onChange={(e) => setName(e.target.value)} />
+          </div>
+          <div className="space-y-2">
+            <Label>Country</Label>
+            <Select value={country} onValueChange={(v) => setCountry(v)}>
+              <SelectTrigger>
+                <SelectValue placeholder="Select country" />
+              </SelectTrigger>
+              <SelectContent>
+                {COUNTRIES.map((c) => (
+                  <SelectItem key={c} value={c}>
+                    {c}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
           <div className="space-y-1.5">
             <Label>Industry</Label>
@@ -1415,5 +1561,325 @@ function WhatsAppSettingsForm({
         </div>
       </CardContent>
     </Card>
+  );
+}
+
+// ── Add Service Dialog ──
+function AddServiceDialog({
+  businessId,
+  accessToken,
+  onCreated,
+}: {
+  businessId: string;
+  accessToken: string;
+  onCreated: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
+  const [avgTime, setAvgTime] = useState("15");
+
+  const handleCreate = async () => {
+    if (!name.trim()) return;
+    setLoading(true);
+    const { error } = await api("/settings/services", {
+      method: "POST",
+      accessToken,
+      body: {
+        name,
+        description: description || null,
+        avgServiceTime: parseInt(avgTime) || 15,
+      },
+    });
+
+    if (error) {
+      toast.error(error);
+    } else {
+      toast.success("Service created");
+      setOpen(false);
+      setName("");
+      setDescription("");
+      setAvgTime("15");
+      onCreated();
+    }
+    setLoading(false);
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button size="sm" className="gap-1">
+          <Plus className="h-4 w-4" />
+          Add Service
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="sm:max-w-[425px]">
+        <DialogHeader>
+          <DialogTitle>Add New Service</DialogTitle>
+          <DialogDescription>
+            Create a new service that customers can select when joining the queue.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4 py-4">
+          <div className="space-y-1.5">
+            <Label>Service Name</Label>
+            <Input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="e.g. Haircut, Consult, etc."
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label>Description</Label>
+            <Textarea
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder="Optional service details"
+              className="resize-none"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label>Avg. Service Time (minutes)</Label>
+            <Input
+              type="number"
+              value={avgTime}
+              onChange={(e) => setAvgTime(e.target.value)}
+            />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
+          <Button onClick={handleCreate} disabled={loading || !name.trim()}>
+            {loading && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+            Create Service
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ── Service Card ──
+function ServiceCard({
+  svc,
+  isOwner,
+  accessToken,
+  onUpdated,
+}: {
+  svc: Service;
+  isOwner: boolean;
+  accessToken: string;
+  onUpdated: () => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [name, setName] = useState(svc.name);
+  const [description, setDescription] = useState(svc.description || "");
+  const [avgTime, setAvgTime] = useState(String(svc.avg_service_time));
+
+  const handleUpdate = async () => {
+    setSaving(true);
+    const { error } = await api(`/settings/services/${svc.id}`, {
+      method: "PUT",
+      accessToken,
+      body: {
+        name,
+        description: description || null,
+        avgServiceTime: parseInt(avgTime) || 15,
+      },
+    });
+
+    if (error) {
+      toast.error(error);
+    } else {
+      toast.success("Service updated");
+      setEditing(false);
+      onUpdated();
+    }
+    setSaving(false);
+  };
+
+  const handleDelete = async () => {
+    const { error } = await api(`/settings/services/${svc.id}`, {
+      method: "DELETE",
+      accessToken,
+    });
+    if (error) {
+      toast.error(error);
+    } else {
+      toast.success("Service removed");
+      onUpdated();
+    }
+  };
+
+  return (
+    <Card className="transition-all hover:shadow-md h-full flex flex-col">
+      <CardContent className="p-4 flex-1 flex flex-col">
+        {editing ? (
+          <div className="space-y-3 flex-1">
+            <div className="space-y-1">
+              <Label className="text-xs">Name</Label>
+              <Input value={name} onChange={(e) => setName(e.target.value)} className="h-8 text-sm" />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Description</Label>
+              <Textarea
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                className="text-sm min-h-[60px] resize-none"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Avg. Time (min)</Label>
+              <Input type="number" value={avgTime} onChange={(e) => setAvgTime(e.target.value)} className="h-8 text-sm" />
+            </div>
+            <div className="flex gap-2 pt-2 mt-auto">
+              <Button size="sm" onClick={handleUpdate} disabled={saving} className="flex-1">
+                {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5 mr-1" />}
+                Save
+              </Button>
+              <Button size="sm" variant="ghost" onClick={() => setEditing(false)}>
+                <X className="h-3.5 w-3.5" />
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <div className="flex flex-col h-full">
+            <div className="flex items-start justify-between gap-2">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-pink-500/10 text-pink-600">
+                <Scissors className="h-5 w-5" />
+              </div>
+              <div className="flex items-center gap-1.5 mt-1">
+                <span className="flex items-center gap-1 text-[10px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded bg-muted text-muted-foreground">
+                  <Clock className="h-3 w-3" />
+                  {svc.avg_service_time}m
+                </span>
+                {isOwner && (
+                  <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                      <Button size="icon" variant="ghost" className="h-7 w-7 text-muted-foreground hover:text-destructive">
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>Remove Service?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                          This will deactivate the service. Customers won't be able to select it anymore.
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                        <AlertDialogAction onClick={handleDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                          Remove
+                        </AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
+                )}
+              </div>
+            </div>
+
+            <div className="mt-4 flex-1">
+              <h4 className="font-semibold text-foreground line-clamp-1">{svc.name}</h4>
+              <p className="text-xs text-muted-foreground mt-1 line-clamp-2 min-h-[2rem]">
+                {svc.description || "No description provided."}
+              </p>
+            </div>
+
+            <div className="mt-4 pt-3 border-t border-border flex justify-end">
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => setEditing(true)}
+                className="h-7 text-xs gap-1"
+              >
+                <Pencil className="h-3.5 w-3.5" />
+                Edit
+              </Button>
+            </div>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+// ── Service Multi-Select ──
+function ServiceMultiSelect({
+  allServices,
+  selectedIds,
+  onChange,
+}: {
+  allServices: Service[];
+  selectedIds: string[];
+  onChange: (ids: string[]) => void;
+}) {
+  const activeServices = allServices.filter(s => s.status === "active");
+
+  const toggleService = (id: string) => {
+    if (selectedIds.includes(id)) {
+      onChange(selectedIds.filter(i => i !== id));
+    } else {
+      onChange([...selectedIds, id]);
+    }
+  };
+
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <Button
+          variant="outline"
+          className="w-full justify-between h-auto py-2 px-3 text-left font-normal"
+        >
+          <div className="flex flex-wrap gap-1">
+            {selectedIds.length > 0 ? (
+              selectedIds.map(id => {
+                const svc = allServices.find(s => s.id === id);
+                return svc ? (
+                  <Badge key={id} variant="secondary" className="text-[10px] py-0 h-5">
+                    {svc.name}
+                  </Badge>
+                ) : null;
+              })
+            ) : (
+              <span className="text-muted-foreground text-sm">Select services...</span>
+            )}
+          </div>
+          <Plus className="h-4 w-4 ml-2 opacity-50 shrink-0" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-[300px] p-0" align="start">
+        <div className="p-2 space-y-1">
+          {activeServices.length > 0 ? (
+            activeServices.map(svc => (
+              <div
+                key={svc.id}
+                className="flex items-center space-x-2 p-2 hover:bg-muted rounded-md cursor-pointer"
+                onClick={() => toggleService(svc.id)}
+              >
+                <Checkbox
+                  checked={selectedIds.includes(svc.id)}
+                  onCheckedChange={() => toggleService(svc.id)}
+                />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium leading-none truncate">{svc.name}</p>
+                  {svc.description && (
+                    <p className="text-[10px] text-muted-foreground truncate mt-1">
+                      {svc.description}
+                    </p>
+                  )}
+                </div>
+              </div>
+            ))
+          ) : (
+            <div className="p-4 text-center text-sm text-muted-foreground">
+              No active services found.
+            </div>
+          )}
+        </div>
+      </PopoverContent>
+    </Popover>
   );
 }

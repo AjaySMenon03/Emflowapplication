@@ -98,6 +98,9 @@ export interface QueueEntry {
   customer_phone: string | null;
   queue_type_name: string | null;
   queue_type_prefix: string | null;
+  // Service info
+  service_id: string | null;
+  service_name: string | null;
 }
 
 interface LockRecord {
@@ -476,6 +479,8 @@ export async function createQueueEntry(params: {
   customerId: string | null;
   customerName: string | null;
   customerPhone: string | null;
+  serviceId?: string | null;
+  serviceName?: string | null;
   priority?: number;
   notes?: string;
 }): Promise<QueueEntry> {
@@ -486,6 +491,8 @@ export async function createQueueEntry(params: {
     customerId,
     customerName,
     customerPhone,
+    serviceId = null,
+    serviceName = null,
     priority = 0,
     notes = null,
   } = params;
@@ -573,6 +580,8 @@ export async function createQueueEntry(params: {
       customer_phone: customerPhone,
       queue_type_name: queueType.name,
       queue_type_prefix: queueType.prefix,
+      service_id: serviceId,
+      service_name: serviceName,
     };
 
     // Index updates
@@ -617,17 +626,17 @@ export async function calculatePosition(
   const entry = await kv.get(`queue_entry:${entryId}`);
   if (!entry) throw new Error(`Entry ${entryId} not found`);
 
-  const sessionEntries: string[] =
-    (await kv.get(`session_entries:${entry.queue_session_id}`)) || [];
+  const locationEntries: string[] =
+    (await kv.get(`location_entries:${entry.location_id}`)) || [];
 
   const waitingEntries: QueueEntry[] = [];
-  for (const eid of sessionEntries) {
+  for (const eid of locationEntries) {
     const e = await kv.get(`queue_entry:${eid}`);
-    if (!e || e.queue_type_id !== entry.queue_type_id) continue;
+    if (!e) continue;
     if (e.status === "waiting") waitingEntries.push(e);
   }
 
-  // Sort by priority DESC, position ASC, joined_at ASC
+  // Sort by priority DESC, position ASC, joined_at ASC -- MATCHING ADMIN LOGIC in index.tsx
   waitingEntries.sort((a, b) => {
     if (b.priority !== a.priority) return b.priority - a.priority;
     if ((a.position || 0) !== (b.position || 0))
@@ -653,7 +662,8 @@ export async function calculatePosition(
 // ══════════════════════════════════════════════
 
 export async function calculateETA(
-  entryId: string
+  entryId: string,
+  providedPosition?: number
 ): Promise<{ estimatedMinutes: number; estimatedTime: string }> {
   const entry = await kv.get(`queue_entry:${entryId}`);
   if (!entry) throw new Error(`Entry ${entryId} not found`);
@@ -662,10 +672,24 @@ export async function calculateETA(
     return { estimatedMinutes: 0, estimatedTime: new Date().toISOString() };
   }
 
-  const queueType = await kv.get(`queue_type:${entry.queue_type_id}`);
-  const serviceTime = queueType?.estimated_service_time || 10;
+  // 1. Try service-specific time
+  let serviceTime = 10;
+  if (entry.service_id) {
+    const service = await kv.get(`service:${entry.service_id}`);
+    if (service?.avg_service_time) {
+      serviceTime = Number(service.avg_service_time);
+    }
+  }
 
-  const { position } = await calculatePosition(entryId);
+  // 2. Fallback to queue type estimated time
+  if (serviceTime === 10) {
+    const queueType = await kv.get(`queue_type:${entry.queue_type_id}`);
+    if (queueType?.estimated_service_time) {
+      serviceTime = Number(queueType.estimated_service_time);
+    }
+  }
+
+  const position = providedPosition !== undefined ? providedPosition : (await calculatePosition(entryId)).position;
   const estimatedMinutes = Math.max(0, position * serviceTime);
   const eta = new Date(Date.now() + estimatedMinutes * 60 * 1000);
 
@@ -689,8 +713,9 @@ export async function callNext(params: {
   queueTypeId: string;
   sessionId: string;
   staffAuthUid: string;
+  serviceIds?: string[]; // optional: filter candidates to only those whose service_id is in this list
 }): Promise<QueueEntry | null> {
-  const { queueTypeId, sessionId, staffAuthUid } = params;
+  const { queueTypeId, sessionId, staffAuthUid, serviceIds } = params;
 
   // Pre-flight checks (outside lock to fail fast)
   await validateStaffForQueueType(staffAuthUid, queueTypeId);
@@ -735,7 +760,7 @@ export async function callNext(params: {
     }
 
     // 5. Find candidates: WAITING entries, sorted by priority DESC → position ASC → joined_at ASC
-    const candidates = allEntries
+    let candidates = allEntries
       .filter((e) => e.status === "waiting")
       .sort((a, b) => {
         if (b.priority !== a.priority) return b.priority - a.priority;
@@ -745,6 +770,18 @@ export async function callNext(params: {
           new Date(a.joined_at).getTime() - new Date(b.joined_at).getTime()
         );
       });
+
+    // 5b. Service-aware filtering: if serviceIds provided, only call customers
+    //     whose service_id matches one of the counter's services
+    if (serviceIds && serviceIds.length > 0) {
+      const serviceFiltered = candidates.filter(
+        (e) => e.service_id && serviceIds.includes(e.service_id)
+      );
+      // Only apply filter if there are matching candidates; otherwise fall back to all
+      if (serviceFiltered.length > 0) {
+        candidates = serviceFiltered;
+      }
+    }
 
     if (candidates.length === 0) {
       // No waiting entries — clear the NEXT pointer

@@ -7,7 +7,7 @@
  * 3. Select queue type
  * 4. Join the queue and get redirected to /status/:entryId
  */
-import { useState, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router";
 import { api } from "../../lib/api";
 import { useLocaleStore, type Locale, LOCALE_LABELS } from "../../stores/locale-store";
@@ -43,6 +43,7 @@ import {
   LogIn,
   AlertTriangle,
   Megaphone,
+  Scissors,
 } from "lucide-react";
 
 interface QueueTypeInfo {
@@ -51,6 +52,13 @@ interface QueueTypeInfo {
   prefix: string;
   description: string | null;
   estimated_service_time: number;
+}
+
+interface Service {
+  id: string;
+  name: string;
+  description: string | null;
+  avg_service_time: number;
 }
 
 interface LocationInfo {
@@ -89,7 +97,8 @@ export function JoinPage() {
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
-  const [selectedQueueType, setSelectedQueueType] = useState("");
+  const [services, setServices] = useState<Service[]>([]);
+  const [selectedServiceId, setSelectedServiceId] = useState("");
 
   // Auto-fill from customer profile if authenticated
   useEffect(() => {
@@ -124,6 +133,7 @@ export function JoinPage() {
         location: LocationInfo;
         business: { name: string };
         queueTypes: QueueTypeInfo[];
+        services: Service[];
       }>(`/public/location/${locationSlug}`);
 
       if (apiErr || !data) {
@@ -135,9 +145,12 @@ export function JoinPage() {
       setLocation(data.location);
       setBusinessName(data.business?.name || "");
       setQueueTypes(data.queueTypes || []);
-      if (data.queueTypes?.length === 1) {
-        setSelectedQueueType(data.queueTypes[0].id);
+      setServices(data.services || []);
+
+      if (data.services?.length === 1) {
+        setSelectedServiceId(data.services[0].id);
       }
+
       setLoading(false);
 
       // Fetch business hours for open/closed status
@@ -177,7 +190,7 @@ export function JoinPage() {
       setError("Please enter your name");
       return;
     }
-    if (!selectedQueueType) {
+    if (!selectedServiceId) {
       setError("Please select a service");
       return;
     }
@@ -191,7 +204,7 @@ export function JoinPage() {
       }>("/public/queue/join", {
         method: "POST",
         body: {
-          queueTypeId: selectedQueueType,
+          serviceId: selectedServiceId,
           locationId: location!.id,
           businessId: location!.business_id,
           name: name.trim(),
@@ -263,7 +276,7 @@ export function JoinPage() {
           {/* Language switcher */}
           <div className="flex items-center gap-1.5">
             <Globe className="h-3.5 w-3.5 text-muted-foreground" />
-            <Select value={locale} onValueChange={(v) => setLocale(v as Locale)}>
+            <Select value={locale} onValueChange={(v: string) => setLocale(v as Locale)}>
               <SelectTrigger className="h-8 w-24 text-xs border-0 bg-transparent">
                 <SelectValue />
               </SelectTrigger>
@@ -299,11 +312,10 @@ export function JoinPage() {
           {isOpen !== null && (
             <div className="mt-2 flex items-center justify-center gap-2">
               <span
-                className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium ${
-                  isOpen
-                    ? "bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400"
-                    : "bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400"
-                }`}
+                className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium ${isOpen
+                  ? "bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400"
+                  : "bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400"
+                  }`}
               >
                 <span className={`h-1.5 w-1.5 rounded-full ${isOpen ? "bg-emerald-500" : "bg-red-500"}`} />
                 {isOpen ? "Open Now" : "Currently Closed"}
@@ -395,46 +407,44 @@ export function JoinPage() {
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-2">
-              {queueTypes.length === 0 ? (
+              {services.length === 0 ? (
                 <p className="text-sm text-muted-foreground py-4 text-center">
                   No services available at this location
                 </p>
               ) : (
-                queueTypes.map((qt) => (
+                services.map((svc) => (
                   <button
-                    key={qt.id}
+                    key={svc.id}
                     type="button"
-                    onClick={() => setSelectedQueueType(qt.id)}
-                    className={`flex w-full items-center gap-3 rounded-lg border p-3 text-left transition-all ${
-                      selectedQueueType === qt.id
-                        ? "border-primary bg-primary/5 ring-1 ring-primary/30"
-                        : "border-border hover:border-primary/30 hover:bg-accent/30"
-                    }`}
+                    onClick={() => setSelectedServiceId(svc.id)}
+                    className={`flex w-full items-center gap-3 rounded-lg border p-3 text-left transition-all ${selectedServiceId === svc.id
+                      ? "border-primary bg-primary/5 ring-1 ring-primary/30"
+                      : "border-border hover:border-primary/30 hover:bg-accent/30"
+                      }`}
                   >
                     <div
-                      className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg font-semibold text-sm ${
-                        selectedQueueType === qt.id
-                          ? "bg-primary text-primary-foreground"
-                          : "bg-muted text-muted-foreground"
-                      }`}
+                      className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg font-semibold text-sm ${selectedServiceId === svc.id
+                        ? "bg-primary text-primary-foreground"
+                        : "bg-muted text-muted-foreground"
+                        }`}
                     >
-                      {qt.prefix}
+                      <Scissors className="h-5 w-5" />
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="font-medium text-sm text-foreground">
-                        {qt.name}
+                        {svc.name}
                       </p>
-                      {qt.description && (
+                      {svc.description && (
                         <p className="text-xs text-muted-foreground truncate">
-                          {qt.description}
+                          {svc.description}
                         </p>
                       )}
                     </div>
                     <div className="flex items-center gap-1 text-xs text-muted-foreground shrink-0">
                       <Clock className="h-3 w-3" />
-                      ~{qt.estimated_service_time}m
+                      ~{svc.avg_service_time}m
                     </div>
-                    {selectedQueueType === qt.id && (
+                    {selectedServiceId === svc.id && (
                       <CheckCircle2 className="h-5 w-5 text-primary shrink-0" />
                     )}
                   </button>
@@ -493,7 +503,7 @@ export function JoinPage() {
           <Button
             type="submit"
             className="w-full h-12 text-base"
-            disabled={submitting || !selectedQueueType || !name.trim() || queuePaused}
+            disabled={submitting || !selectedServiceId || !name.trim() || queuePaused}
           >
             {submitting ? (
               <Loader2 className="mr-2 h-5 w-5 animate-spin" />

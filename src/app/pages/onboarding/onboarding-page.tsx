@@ -11,6 +11,7 @@ import {
 } from "../../stores/onboarding-store";
 import { api } from "../../lib/api";
 import { supabase } from "../../lib/supabase";
+import { COUNTRIES } from "../../lib/countries";
 import { Card, CardContent } from "../../components/ui/card";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
@@ -149,6 +150,7 @@ export function OnboardingPage() {
             city: store.locationCity,
             phone: store.locationPhone,
             timezone: store.timezone,
+            country: store.country,
           },
         });
         if (apiError) throw new Error(apiError);
@@ -286,13 +288,12 @@ export function OnboardingPage() {
                 <div key={step.id} className="flex flex-1 items-center">
                   <div className="flex flex-col items-center gap-1.5">
                     <div
-                      className={`flex h-10 w-10 items-center justify-center rounded-full border-2 transition-all ${
-                        isCompleted
-                          ? "border-primary bg-primary text-primary-foreground"
-                          : isCurrent
-                            ? "border-primary bg-primary/10 text-primary"
-                            : "border-muted bg-muted/50 text-muted-foreground"
-                      }`}
+                      className={`flex h-10 w-10 items-center justify-center rounded-full border-2 transition-all ${isCompleted
+                        ? "border-primary bg-primary text-primary-foreground"
+                        : isCurrent
+                          ? "border-primary bg-primary/10 text-primary"
+                          : "border-muted bg-muted/50 text-muted-foreground"
+                        }`}
                     >
                       {isCompleted ? (
                         <Check className="h-4 w-4" />
@@ -301,20 +302,18 @@ export function OnboardingPage() {
                       )}
                     </div>
                     <span
-                      className={`text-xs text-center hidden sm:block ${
-                        isCurrent
-                          ? "text-primary font-medium"
-                          : "text-muted-foreground"
-                      }`}
+                      className={`text-xs text-center hidden sm:block ${isCurrent
+                        ? "text-primary font-medium"
+                        : "text-muted-foreground"
+                        }`}
                     >
                       {step.label}
                     </span>
                   </div>
                   {i < ONBOARDING_STEPS.length - 1 && (
                     <div
-                      className={`mx-2 h-0.5 flex-1 rounded-full ${
-                        store.currentStep > step.id ? "bg-primary" : "bg-muted"
-                      }`}
+                      className={`mx-2 h-0.5 flex-1 rounded-full ${store.currentStep > step.id ? "bg-primary" : "bg-muted"
+                        }`}
                     />
                   )}
                 </div>
@@ -491,6 +490,24 @@ function StepLocation() {
             onChange={(e) => store.updateField("locationPhone", e.target.value)}
           />
         </div>
+        <div className="space-y-2">
+          <Label>Country</Label>
+          <Select
+            value={store.country}
+            onValueChange={(v) => store.updateField("country", v)}
+          >
+            <SelectTrigger>
+              <SelectValue placeholder="Select country" />
+            </SelectTrigger>
+            <SelectContent>
+              {COUNTRIES.map((c) => (
+                <SelectItem key={c} value={c}>
+                  {c}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
         <div className="space-y-2 sm:col-span-2">
           <Label>Address</Label>
           <Input
@@ -636,9 +653,8 @@ function StepBusinessHours() {
                 }
               />
               <span
-                className={`text-sm ${
-                  bh.enabled ? "text-foreground" : "text-muted-foreground"
-                }`}
+                className={`text-sm ${bh.enabled ? "text-foreground" : "text-muted-foreground"
+                  }`}
               >
                 {bh.day}
               </span>

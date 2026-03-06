@@ -277,6 +277,7 @@ baseApp.post("/onboarding/location", async (c) => {
       address: body.address || null,
       city: body.city || null,
       phone: body.phone || null,
+      country: body.country || null,
       status: "active",
       timezone: body.timezone || "Europe/Istanbul",
       created_at: timestamp,
@@ -508,7 +509,7 @@ baseApp.post("/onboarding/complete", async (c) => {
 // DATA: Business / Location
 // ══════════════════════════════════════════════
 
-baseApp.get("/make-server-5252bcc1/business/:id", async (c) => {
+baseApp.get("/business/:id", async (c) => {
   try {
     const user = await getAuthUser(c);
     if (!user) return c.json({ error: "Unauthorized" }, 401);
@@ -522,7 +523,7 @@ baseApp.get("/make-server-5252bcc1/business/:id", async (c) => {
 });
 
 // Get locations for a business (staff)
-baseApp.get("/make-server-5252bcc1/business/:id/locations", async (c) => {
+baseApp.get("/business/:id/locations", async (c) => {
   try {
     const user = await getAuthUser(c);
     if (!user) return c.json({ error: "Unauthorized" }, 401);
@@ -544,7 +545,7 @@ baseApp.get("/make-server-5252bcc1/business/:id/locations", async (c) => {
 // PUBLIC: Location by slug (no auth)
 // ══════════════════════════════════════════════
 
-baseApp.get("/make-server-5252bcc1/public/location/:slug", async (c) => {
+baseApp.get("/public/location/:slug", async (c) => {
   try {
     const slug = c.req.param("slug");
     const locationId = await kv.get(`location_slug:${slug}`);
@@ -559,7 +560,15 @@ baseApp.get("/make-server-5252bcc1/public/location/:slug", async (c) => {
       location.business_id,
     );
 
-    return c.json({ location, business, queueTypes });
+    // Also return services for the join page
+    const serviceIds: string[] = (await kv.get(`business_services:${location.business_id}`)) || [];
+    const services: any[] = [];
+    for (const sid of serviceIds) {
+      const svc = await kv.get(`service:${sid}`);
+      if (svc && svc.status === "active") services.push(svc);
+    }
+
+    return c.json({ location, business, queueTypes, services });
   } catch (err) {
     return c.json(
       { error: `Public location fetch failed: ${err.message}` },
@@ -569,7 +578,7 @@ baseApp.get("/make-server-5252bcc1/public/location/:slug", async (c) => {
 });
 
 // Also support fetching location by ID (for kiosk)
-baseApp.get("/make-server-5252bcc1/public/location-by-id/:id", async (c) => {
+baseApp.get("/public/location-by-id/:id", async (c) => {
   try {
     const locationId = c.req.param("id");
     const location = await kv.get(`location:${locationId}`);
@@ -686,20 +695,49 @@ async function notifyPosition3ViaWhatsApp(
 // QUEUE: Customer Join (public — no auth)
 // ══════════════════════════════════════════════
 
-baseApp.post("/make-server-5252bcc1/public/queue/join", async (c) => {
+baseApp.post("/public/queue/join", async (c) => {
   try {
     const body = await c.req.json();
-    const { queueTypeId, locationId, businessId, name, phone, email, locale } =
+    let { queueTypeId, locationId, businessId, name, phone, email, locale, serviceId } =
       body;
 
-    if (!queueTypeId || !locationId || !businessId) {
+    if (!locationId || !businessId) {
       return c.json(
-        { error: "queueTypeId, locationId, and businessId are required" },
+        { error: "locationId and businessId are required" },
+        400,
+      );
+    }
+    if (!queueTypeId && !serviceId) {
+      return c.json(
+        { error: "Either queueTypeId or serviceId is required" },
         400,
       );
     }
     if (!name?.trim()) {
       return c.json({ error: "Name is required" }, 400);
+    }
+
+    // If serviceId provided, resolve a matching queue type
+    let resolvedServiceName: string | null = null;
+    if (serviceId && !queueTypeId) {
+      const svc = await kv.get(`service:${serviceId}`);
+      if (!svc || svc.status !== "active") {
+        return c.json({ error: "Service not found or inactive" }, 404);
+      }
+      resolvedServiceName = svc.name;
+      // Find a queue type at this location that supports this service
+      const allQueueTypes = await queueLogic.getQueueTypesForLocation(locationId, businessId);
+      const matchingQt = allQueueTypes.find((qt: any) =>
+        qt.status === "active" && (qt.service_ids || []).includes(serviceId)
+      );
+      if (!matchingQt) {
+        return c.json({ error: "No counter available for this service" }, 404);
+      }
+      queueTypeId = matchingQt.id;
+    } else if (serviceId && queueTypeId) {
+      // Both provided — just grab service name
+      const svc = await kv.get(`service:${serviceId}`);
+      if (svc) resolvedServiceName = svc.name;
     }
 
     // ── Emergency pause check ──
@@ -811,6 +849,8 @@ baseApp.post("/make-server-5252bcc1/public/queue/join", async (c) => {
       customerId,
       customerName: name.trim(),
       customerPhone: phone || null,
+      serviceId: serviceId || null,
+      serviceName: resolvedServiceName || null,
     });
 
     // Track entry in customer_entries index for retention analytics
@@ -927,7 +967,7 @@ baseApp.post("/make-server-5252bcc1/public/queue/join", async (c) => {
 // QUEUE: Customer Status (public — no auth)
 // ══════════════════════════════════════════════
 
-baseApp.get("/make-server-5252bcc1/public/queue/status/:entryId", async (c) => {
+baseApp.get("/public/queue/status/:entryId", async (c) => {
   try {
     const entryId = c.req.param("entryId");
     const entry = await kv.get(`queue_entry:${entryId}`);
@@ -984,7 +1024,7 @@ baseApp.post(
 // ══════════════════════════════════════════════
 
 // Get all entries for a location
-baseApp.get("/make-server-5252bcc1/queue/entries/:locationId", async (c) => {
+baseApp.get("/queue/entries/:locationId", async (c) => {
   try {
     const user = await getAuthUser(c);
     if (!user) return c.json({ error: "Unauthorized" }, 401);
@@ -992,17 +1032,20 @@ baseApp.get("/make-server-5252bcc1/queue/entries/:locationId", async (c) => {
     const locationId = c.req.param("locationId");
     const entries = await queueLogic.getLocationEntries(locationId);
 
-    // Separate by status
-    const waiting = entries
-      .filter((e) => e.status === "waiting")
-      .sort((a, b) => {
-        if (b.priority !== a.priority) return b.priority - a.priority;
-        if ((a.position || 0) !== (b.position || 0))
-          return (a.position || 0) - (b.position || 0);
-        return (
-          new Date(a.joined_at).getTime() - new Date(b.joined_at).getTime()
-        );
-      });
+    const waitingRaw = entries.filter((e) => e.status === "waiting");
+    const waitingEnriched = await Promise.all(
+      waitingRaw.map(async (e, idx) => {
+        const eta = await queueLogic.calculateETA(e.id, idx + 1);
+        return { ...e, estimatedMinutes: eta.estimatedMinutes };
+      })
+    );
+
+    const waiting = waitingEnriched.sort((a, b) => {
+      if (b.priority !== a.priority) return b.priority - a.priority;
+      if ((a.position || 0) !== (b.position || 0))
+        return (a.position || 0) - (b.position || 0);
+      return new Date(a.joined_at).getTime() - new Date(b.joined_at).getTime();
+    });
     const next = entries.filter((e) => e.status === "next");
     const serving = entries.filter((e) => e.status === "serving");
     const completed = entries
@@ -1026,7 +1069,7 @@ baseApp.get("/make-server-5252bcc1/queue/entries/:locationId", async (c) => {
 });
 
 // Call next
-baseApp.post("/make-server-5252bcc1/queue/call-next", async (c) => {
+baseApp.post("/queue/call-next", async (c) => {
   try {
     const user = await getAuthUser(c);
     if (!user) return c.json({ error: "Unauthorized" }, 401);
@@ -1078,7 +1121,7 @@ baseApp.post("/make-server-5252bcc1/queue/call-next", async (c) => {
 
 // Start serving (transition NEXT → SERVING)
 baseApp.post(
-  "/make-server-5252bcc1/queue/start-serving/:entryId",
+  "/queue/start-serving/:entryId",
   async (c) => {
     try {
       const user = await getAuthUser(c);
@@ -1095,7 +1138,7 @@ baseApp.post(
 );
 
 // Mark served
-baseApp.post("/make-server-5252bcc1/queue/mark-served/:entryId", async (c) => {
+baseApp.post("/queue/mark-served/:entryId", async (c) => {
   try {
     const user = await getAuthUser(c);
     if (!user) return c.json({ error: "Unauthorized" }, 401);
@@ -1107,7 +1150,7 @@ baseApp.post("/make-server-5252bcc1/queue/mark-served/:entryId", async (c) => {
 });
 
 // Mark no-show
-baseApp.post("/make-server-5252bcc1/queue/mark-noshow/:entryId", async (c) => {
+baseApp.post("/queue/mark-noshow/:entryId", async (c) => {
   try {
     const user = await getAuthUser(c);
     if (!user) return c.json({ error: "Unauthorized" }, 401);
@@ -1119,7 +1162,7 @@ baseApp.post("/make-server-5252bcc1/queue/mark-noshow/:entryId", async (c) => {
 });
 
 // Move entry
-baseApp.post("/make-server-5252bcc1/queue/move/:entryId", async (c) => {
+baseApp.post("/queue/move/:entryId", async (c) => {
   try {
     const user = await getAuthUser(c);
     if (!user) return c.json({ error: "Unauthorized" }, 401);
@@ -1132,7 +1175,7 @@ baseApp.post("/make-server-5252bcc1/queue/move/:entryId", async (c) => {
 });
 
 // Reassign staff
-baseApp.post("/make-server-5252bcc1/queue/reassign/:entryId", async (c) => {
+baseApp.post("/queue/reassign/:entryId", async (c) => {
   try {
     const user = await getAuthUser(c);
     if (!user) return c.json({ error: "Unauthorized" }, 401);
@@ -1148,7 +1191,7 @@ baseApp.post("/make-server-5252bcc1/queue/reassign/:entryId", async (c) => {
 });
 
 // Get queue types for location (staff)
-baseApp.get("/make-server-5252bcc1/queue/types/:locationId", async (c) => {
+baseApp.get("/queue/types/:locationId", async (c) => {
   try {
     const user = await getAuthUser(c);
     if (!user) return c.json({ error: "Unauthorized" }, 401);
@@ -1168,7 +1211,7 @@ baseApp.get("/make-server-5252bcc1/queue/types/:locationId", async (c) => {
 });
 
 // Get/create today's session for a queue type
-baseApp.post("/make-server-5252bcc1/queue/session", async (c) => {
+baseApp.post("/queue/session", async (c) => {
   try {
     const user = await getAuthUser(c);
     if (!user) return c.json({ error: "Unauthorized" }, 401);
@@ -1188,7 +1231,7 @@ baseApp.post("/make-server-5252bcc1/queue/session", async (c) => {
 // REALTIME POLLING (lightweight polling endpoint)
 // ══════════════════════════════════════════════
 
-baseApp.get("/make-server-5252bcc1/realtime/poll/:locationId", async (c) => {
+baseApp.get("/realtime/poll/:locationId", async (c) => {
   try {
     const locationId = c.req.param("locationId");
     const sinceParam = c.req.query("since");
@@ -1213,7 +1256,7 @@ baseApp.get("/make-server-5252bcc1/realtime/poll/:locationId", async (c) => {
 });
 
 // Get staff list for a business (for reassignment)
-baseApp.get("/make-server-5252bcc1/business/:id/staff", async (c) => {
+baseApp.get("/business/:id/staff", async (c) => {
   try {
     const user = await getAuthUser(c);
     if (!user) return c.json({ error: "Unauthorized" }, 401);
@@ -1246,7 +1289,7 @@ baseApp.get("/make-server-5252bcc1/business/:id/staff", async (c) => {
 
 // Public entries for a location (used by kiosk slug route, no auth)
 baseApp.get(
-  "/make-server-5252bcc1/public/queue/entries/:locationId",
+  "/public/queue/entries/:locationId",
   async (c) => {
     try {
       const locationId = c.req.param("locationId");
@@ -1279,7 +1322,7 @@ baseApp.get(
 // ANALYTICS — Precomputed metrics for reports
 // ══════════════════════════════════════════════
 
-baseApp.get("/make-server-5252bcc1/analytics/:locationId", async (c) => {
+baseApp.get("/analytics/:locationId", async (c) => {
   try {
     const user = await getAuthUser(c);
     if (!user) return c.json({ error: "Unauthorized" }, 401);
@@ -1303,7 +1346,7 @@ baseApp.get("/make-server-5252bcc1/analytics/:locationId", async (c) => {
         return (
           acc +
           (new Date(e.called_at!).getTime() - new Date(e.joined_at).getTime()) /
-            60000
+          60000
         );
       }, 0);
       avgWaitMinutes = Math.round((totalWait / withWait.length) * 10) / 10;
@@ -1318,7 +1361,7 @@ baseApp.get("/make-server-5252bcc1/analytics/:locationId", async (c) => {
           acc +
           (new Date(e.completed_at!).getTime() -
             new Date(e.called_at!).getTime()) /
-            60000
+          60000
         );
       }, 0);
       avgServiceMinutes =
@@ -1476,7 +1519,7 @@ baseApp.get("/make-server-5252bcc1/analytics/:locationId", async (c) => {
 // ══════════════════════════════════════════════
 
 // Create a new queue type
-baseApp.post("/make-server-5252bcc1/settings/queue-type", async (c) => {
+baseApp.post("/settings/queue-type", async (c) => {
   try {
     const user = await getAuthUser(c);
     if (!user) return c.json({ error: "Unauthorized" }, 401);
@@ -1503,6 +1546,7 @@ baseApp.post("/make-server-5252bcc1/settings/queue-type", async (c) => {
       description: body.description || null,
       estimated_service_time: body.estimatedServiceTime || 10,
       max_capacity: body.maxCapacity || 100,
+      service_ids: body.serviceIds || [],
       status: "active",
       sort_order: body.sortOrder || 0,
       created_at: timestamp,
@@ -1524,7 +1568,7 @@ baseApp.post("/make-server-5252bcc1/settings/queue-type", async (c) => {
 });
 
 // Update a queue type
-baseApp.put("/make-server-5252bcc1/settings/queue-type/:id", async (c) => {
+baseApp.put("/settings/queue-type/:id", async (c) => {
   try {
     const user = await getAuthUser(c);
     if (!user) return c.json({ error: "Unauthorized" }, 401);
@@ -1551,6 +1595,7 @@ baseApp.put("/make-server-5252bcc1/settings/queue-type/:id", async (c) => {
       estimated_service_time:
         body.estimatedServiceTime ?? existing.estimated_service_time,
       max_capacity: body.maxCapacity ?? existing.max_capacity,
+      service_ids: body.serviceIds ?? existing.service_ids ?? [],
       status: body.status ?? existing.status,
       sort_order: body.sortOrder ?? existing.sort_order,
       updated_at: now(),
@@ -1564,7 +1609,7 @@ baseApp.put("/make-server-5252bcc1/settings/queue-type/:id", async (c) => {
 });
 
 // Delete (deactivate) a queue type
-baseApp.delete("/make-server-5252bcc1/settings/queue-type/:id", async (c) => {
+baseApp.delete("/settings/queue-type/:id", async (c) => {
   try {
     const user = await getAuthUser(c);
     if (!user) return c.json({ error: "Unauthorized" }, 401);
@@ -1586,11 +1631,121 @@ baseApp.delete("/make-server-5252bcc1/settings/queue-type/:id", async (c) => {
 });
 
 // ══════════════════════════════════════════════
+// SETTINGS — Services CRUD
+// ══════════════════════════════════════════════
+
+// List all services for a business
+baseApp.get("/settings/services/:businessId", async (c) => {
+  try {
+    const user = await getAuthUser(c);
+    if (!user) return c.json({ error: "Unauthorized" }, 401);
+    const businessId = c.req.param("businessId");
+    const serviceIds: string[] = (await kv.get(`business_services:${businessId}`)) || [];
+    const services: any[] = [];
+    for (const sid of serviceIds) {
+      const svc = await kv.get(`service:${sid}`);
+      if (svc) services.push(svc);
+    }
+    return c.json({ services });
+  } catch (err) {
+    return c.json({ error: `Services fetch failed: ${err.message}` }, 500);
+  }
+});
+
+// Create a new service
+baseApp.post("/settings/services", async (c) => {
+  try {
+    const user = await getAuthUser(c);
+    if (!user) return c.json({ error: "Unauthorized" }, 401);
+    const staffRecord = await kv.get(`staff_user:${user.id}`);
+    if (!staffRecord || (staffRecord.role !== "owner" && staffRecord.role !== "admin"))
+      return c.json({ error: "Only owners/admins can manage services" }, 403);
+
+    const body = await c.req.json();
+    if (!body.name?.trim()) return c.json({ error: "Service name is required" }, 400);
+
+    const serviceId = uuid();
+    const timestamp = now();
+    const service = {
+      id: serviceId,
+      business_id: staffRecord.business_id,
+      name: body.name.trim(),
+      description: body.description?.trim() || null,
+      avg_service_time: body.avgServiceTime || 10,
+      status: "active",
+      created_at: timestamp,
+      updated_at: timestamp,
+    };
+
+    await kv.set(`service:${serviceId}`, service);
+    const existing: string[] = (await kv.get(`business_services:${staffRecord.business_id}`)) || [];
+    existing.push(serviceId);
+    await kv.set(`business_services:${staffRecord.business_id}`, existing);
+
+    return c.json({ service });
+  } catch (err) {
+    return c.json({ error: `Create service failed: ${err.message}` }, 500);
+  }
+});
+
+// Update a service
+baseApp.put("/settings/services/:id", async (c) => {
+  try {
+    const user = await getAuthUser(c);
+    if (!user) return c.json({ error: "Unauthorized" }, 401);
+    const staffRecord = await kv.get(`staff_user:${user.id}`);
+    if (!staffRecord || (staffRecord.role !== "owner" && staffRecord.role !== "admin"))
+      return c.json({ error: "Only owners/admins can manage services" }, 403);
+
+    const id = c.req.param("id");
+    const existing = await kv.get(`service:${id}`);
+    if (!existing) return c.json({ error: "Service not found" }, 404);
+
+    const body = await c.req.json();
+    const updated = {
+      ...existing,
+      name: body.name?.trim() ?? existing.name,
+      description: body.description !== undefined ? (body.description?.trim() || null) : existing.description,
+      avg_service_time: body.avgServiceTime ?? existing.avg_service_time,
+      status: body.status ?? existing.status,
+      updated_at: now(),
+    };
+
+    await kv.set(`service:${id}`, updated);
+    return c.json({ service: updated });
+  } catch (err) {
+    return c.json({ error: `Update service failed: ${err.message}` }, 500);
+  }
+});
+
+// Delete (deactivate) a service
+baseApp.delete("/settings/services/:id", async (c) => {
+  try {
+    const user = await getAuthUser(c);
+    if (!user) return c.json({ error: "Unauthorized" }, 401);
+    const staffRecord = await kv.get(`staff_user:${user.id}`);
+    if (!staffRecord || staffRecord.role !== "owner")
+      return c.json({ error: "Only owners can delete services" }, 403);
+
+    const id = c.req.param("id");
+    const existing = await kv.get(`service:${id}`);
+    if (!existing) return c.json({ error: "Service not found" }, 404);
+
+    existing.status = "inactive";
+    existing.updated_at = now();
+    await kv.set(`service:${id}`, existing);
+    return c.json({ success: true });
+  } catch (err) {
+    return c.json({ error: `Delete service failed: ${err.message}` }, 500);
+  }
+});
+
+// ══════════════════════════════════════════════
 // SETTINGS — Staff Management
 // ══════════════════════════════════════════════
 
 // Update staff role / status — owners can edit anyone, admins can edit staff-role only
-baseApp.put("/make-server-5252bcc1/settings/staff/:authUid", async (c) => {
+baseApp.put("/settings/staff/:authUid", async (c) => {
   try {
     const user = await getAuthUser(c);
     if (!user) return c.json({ error: "Unauthorized" }, 401);
@@ -1631,7 +1786,7 @@ baseApp.put("/make-server-5252bcc1/settings/staff/:authUid", async (c) => {
 
 // Reset staff password — owners & admins (admins only for staff-role)
 baseApp.post(
-  "/make-server-5252bcc1/settings/staff/:authUid/reset-password",
+  "/settings/staff/:authUid/reset-password",
   async (c) => {
     try {
       const user = await getAuthUser(c);
@@ -1695,7 +1850,7 @@ baseApp.post(
 );
 
 // Update own profile — any authenticated staff can update their own name
-baseApp.put("/make-server-5252bcc1/settings/profile", async (c) => {
+baseApp.put("/settings/profile", async (c) => {
   try {
     const user = await getAuthUser(c);
     if (!user) return c.json({ error: "Unauthorized" }, 401);
@@ -1718,7 +1873,7 @@ baseApp.put("/make-server-5252bcc1/settings/profile", async (c) => {
 });
 
 // Deactivate staff
-baseApp.delete("/make-server-5252bcc1/settings/staff/:authUid", async (c) => {
+baseApp.delete("/settings/staff/:authUid", async (c) => {
   try {
     const user = await getAuthUser(c);
     if (!user) return c.json({ error: "Unauthorized" }, 401);
@@ -1746,7 +1901,7 @@ baseApp.delete("/make-server-5252bcc1/settings/staff/:authUid", async (c) => {
 // SETTINGS — Business Profile
 // ══════════════════════════════════════════════
 
-baseApp.put("/make-server-5252bcc1/settings/business/:id", async (c) => {
+baseApp.put("/settings/business/:id", async (c) => {
   try {
     const user = await getAuthUser(c);
     if (!user) return c.json({ error: "Unauthorized" }, 401);
@@ -1769,6 +1924,7 @@ baseApp.put("/make-server-5252bcc1/settings/business/:id", async (c) => {
       email: body.email ?? business.email,
       address: body.address ?? business.address,
       industry: body.industry ?? business.industry,
+      country: body.country ?? business.country,
       updated_at: now(),
     };
     await kv.set(`business:${id}`, updated);
@@ -1782,7 +1938,7 @@ baseApp.put("/make-server-5252bcc1/settings/business/:id", async (c) => {
 // SETTINGS — Location Management
 // ══════════════════════════════════════════════
 
-baseApp.put("/make-server-5252bcc1/settings/location/:id", async (c) => {
+baseApp.put("/settings/location/:id", async (c) => {
   try {
     const user = await getAuthUser(c);
     if (!user) return c.json({ error: "Unauthorized" }, 401);
@@ -1823,7 +1979,7 @@ baseApp.put("/make-server-5252bcc1/settings/location/:id", async (c) => {
 // ══════════════════════════════════════════════
 
 // Verify kiosk PIN for a location (public — no auth, but rate-limited by PIN check)
-baseApp.post("/make-server-5252bcc1/kiosk/verify-pin", async (c) => {
+baseApp.post("/kiosk/verify-pin", async (c) => {
   try {
     const { locationId, pin } = await c.req.json();
     if (!locationId || !pin) {
@@ -1856,7 +2012,7 @@ baseApp.post("/make-server-5252bcc1/kiosk/verify-pin", async (c) => {
 });
 
 // Kiosk staff authenticate — validates credentials + role, returns token
-baseApp.post("/make-server-5252bcc1/kiosk/authenticate", async (c) => {
+baseApp.post("/kiosk/authenticate", async (c) => {
   try {
     const { email, password, locationId } = await c.req.json();
     if (!email || !password || !locationId) {
@@ -1929,7 +2085,7 @@ baseApp.post("/make-server-5252bcc1/kiosk/authenticate", async (c) => {
 });
 
 // Kiosk call-next — role-validated server-side
-baseApp.post("/make-server-5252bcc1/kiosk/call-next", async (c) => {
+baseApp.post("/kiosk/call-next", async (c) => {
   try {
     const user = await getAuthUser(c);
     if (!user)
@@ -2027,7 +2183,7 @@ baseApp.post("/make-server-5252bcc1/kiosk/call-next", async (c) => {
 });
 
 // Kiosk mark-served — role-validated server-side
-baseApp.post("/make-server-5252bcc1/kiosk/mark-served/:entryId", async (c) => {
+baseApp.post("/kiosk/mark-served/:entryId", async (c) => {
   try {
     const user = await getAuthUser(c);
     if (!user) return c.json({ error: "Unauthorized" }, 401);
@@ -2049,7 +2205,7 @@ baseApp.post("/make-server-5252bcc1/kiosk/mark-served/:entryId", async (c) => {
 });
 
 // Kiosk mark-noshow — role-validated server-side
-baseApp.post("/make-server-5252bcc1/kiosk/mark-noshow/:entryId", async (c) => {
+baseApp.post("/kiosk/mark-noshow/:entryId", async (c) => {
   try {
     const user = await getAuthUser(c);
     if (!user) return c.json({ error: "Unauthorized" }, 401);
@@ -2075,7 +2231,7 @@ baseApp.post("/make-server-5252bcc1/kiosk/mark-noshow/:entryId", async (c) => {
 // ══════════════════════════════════════════════
 
 baseApp.get(
-  "/make-server-5252bcc1/settings/whatsapp/:businessId",
+  "/settings/whatsapp/:businessId",
   async (c) => {
     try {
       const user = await getAuthUser(c);
@@ -2095,7 +2251,7 @@ baseApp.get(
 );
 
 baseApp.put(
-  "/make-server-5252bcc1/settings/whatsapp/:businessId",
+  "/settings/whatsapp/:businessId",
   async (c) => {
     try {
       const user = await getAuthUser(c);
@@ -2171,7 +2327,7 @@ baseApp.put(
 
 // GET business hours for a location
 baseApp.get(
-  "/make-server-5252bcc1/settings/business-hours/:locationId",
+  "/settings/business-hours/:locationId",
   async (c) => {
     try {
       const user = await getAuthUser(c);
@@ -2192,7 +2348,7 @@ baseApp.get(
 
 // PUT update business hours for a location
 baseApp.put(
-  "/make-server-5252bcc1/settings/business-hours/:locationId",
+  "/settings/business-hours/:locationId",
   async (c) => {
     try {
       const user = await getAuthUser(c);
@@ -2240,7 +2396,7 @@ baseApp.put(
 // GET business hours for public display (customer-facing)
 // Now uses timezone-aware checkBusinessHours from queue-logic
 baseApp.get(
-  "/make-server-5252bcc1/public/business-hours/:locationId",
+  "/public/business-hours/:locationId",
   async (c) => {
     try {
       const locationId = c.req.param("locationId");
@@ -2269,7 +2425,7 @@ baseApp.get(
 // SETTINGS — Invite new staff member
 // ══════════════════════════════════════════════
 
-baseApp.post("/make-server-5252bcc1/settings/staff/invite", async (c) => {
+baseApp.post("/settings/staff/invite", async (c) => {
   try {
     const user = await getAuthUser(c);
     if (!user) return c.json({ error: "Unauthorized" }, 401);
@@ -2374,7 +2530,7 @@ baseApp.post("/make-server-5252bcc1/settings/staff/invite", async (c) => {
 
 // Enhanced cancel (supports NEXT cancel with auto-promote, prevents after SERVED)
 baseApp.post(
-  "/make-server-5252bcc1/queue/cancel-enhanced/:entryId",
+  "/queue/cancel-enhanced/:entryId",
   async (c) => {
     try {
       const entryId = c.req.param("entryId");
@@ -2401,7 +2557,7 @@ baseApp.post(
 
 // Auto no-show processing for a location
 baseApp.post(
-  "/make-server-5252bcc1/queue/auto-noshow/:locationId",
+  "/queue/auto-noshow/:locationId",
   async (c) => {
     try {
       const user = await getAuthUser(c);
@@ -2423,7 +2579,7 @@ baseApp.post(
 );
 
 // Mark previous as served
-baseApp.post("/make-server-5252bcc1/queue/mark-previous-served", async (c) => {
+baseApp.post("/queue/mark-previous-served", async (c) => {
   try {
     const user = await getAuthUser(c);
     if (!user) return c.json({ error: "Unauthorized" }, 401);
@@ -2449,7 +2605,7 @@ baseApp.post("/make-server-5252bcc1/queue/mark-previous-served", async (c) => {
 
 // Check duplicate entry before join
 baseApp.post(
-  "/make-server-5252bcc1/public/queue/check-duplicate",
+  "/public/queue/check-duplicate",
   async (c) => {
     try {
       const { locationId, phone, customerId } = await c.req.json();
@@ -2469,7 +2625,7 @@ baseApp.post(
 // AUDIT LOG
 // ══════════════════════════════════════════════
 
-baseApp.get("/make-server-5252bcc1/audit/:locationId", async (c) => {
+baseApp.get("/audit/:locationId", async (c) => {
   try {
     const user = await getAuthUser(c);
     if (!user) return c.json({ error: "Unauthorized" }, 401);
@@ -2509,7 +2665,7 @@ baseApp.get("/make-server-5252bcc1/audit/:locationId", async (c) => {
 
 // Get active sessions for a location (public, no auth)
 baseApp.get(
-  "/make-server-5252bcc1/public/session/active/:locationId",
+  "/public/session/active/:locationId",
   async (c) => {
     try {
       const locationId = c.req.param("locationId");
@@ -2526,7 +2682,7 @@ baseApp.get(
 
 // Check business hours for a location (public, no auth)
 baseApp.get(
-  "/make-server-5252bcc1/public/session/hours/:locationId",
+  "/public/session/hours/:locationId",
   async (c) => {
     try {
       const locationId = c.req.param("locationId");
@@ -2542,7 +2698,7 @@ baseApp.get(
 );
 
 // Get/create today's smart session (staff, auth required)
-baseApp.post("/make-server-5252bcc1/queue/session-smart", async (c) => {
+baseApp.post("/queue/session-smart", async (c) => {
   try {
     const user = await getAuthUser(c);
     if (!user) return c.json({ error: "Unauthorized" }, 401);
@@ -2562,7 +2718,7 @@ baseApp.post("/make-server-5252bcc1/queue/session-smart", async (c) => {
 
 // Close a specific session (staff, auth required)
 baseApp.post(
-  "/make-server-5252bcc1/queue/session/close/:sessionId",
+  "/queue/session/close/:sessionId",
   async (c) => {
     try {
       const user = await getAuthUser(c);
@@ -2591,7 +2747,7 @@ baseApp.post(
 
 // Close all sessions for a location (staff, auth required)
 baseApp.post(
-  "/make-server-5252bcc1/queue/session/close-all/:locationId",
+  "/queue/session/close-all/:locationId",
   async (c) => {
     try {
       const user = await getAuthUser(c);
@@ -2626,7 +2782,7 @@ baseApp.post(
 
 // Archive old sessions (staff, auth required)
 baseApp.post(
-  "/make-server-5252bcc1/queue/session/archive/:locationId",
+  "/queue/session/archive/:locationId",
   async (c) => {
     try {
       const user = await getAuthUser(c);
@@ -2650,7 +2806,7 @@ baseApp.post(
 
 // Auto-close expired sessions for a business (cron endpoint)
 // In production, called by Supabase pg_cron or Edge Function schedule.
-baseApp.post("/make-server-5252bcc1/cron/auto-close-sessions", async (c) => {
+baseApp.post("/cron/auto-close-sessions", async (c) => {
   try {
     const authHeader = c.req.header("Authorization")?.split(" ")[1];
     const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
@@ -2685,7 +2841,7 @@ baseApp.post("/make-server-5252bcc1/cron/auto-close-sessions", async (c) => {
     const result = await queueLogic.autoCloseExpiredSessions(businessId);
     console.log(
       `[cron/auto-close] Business ${businessId}: processed ${result.locationsProcessed} locations, ` +
-        `closed ${result.totalClosed} sessions, cancelled ${result.totalCancelled} entries`,
+      `closed ${result.totalClosed} sessions, cancelled ${result.totalCancelled} entries`,
     );
     return c.json(result);
   } catch (err) {
@@ -2698,7 +2854,7 @@ baseApp.post("/make-server-5252bcc1/cron/auto-close-sessions", async (c) => {
 // ══════════════════════════════════════════════
 
 // List all customers for a business
-baseApp.get("/make-server-5252bcc1/customers/:businessId", async (c) => {
+baseApp.get("/customers/:businessId", async (c) => {
   try {
     const user = await getAuthUser(c);
     if (!user) return c.json({ error: "Unauthorized" }, 401);
@@ -2761,7 +2917,7 @@ baseApp.get("/make-server-5252bcc1/customers/:businessId", async (c) => {
 });
 
 // Update a customer record
-baseApp.put("/make-server-5252bcc1/customers/:customerId", async (c) => {
+baseApp.put("/customers/:customerId", async (c) => {
   try {
     const user = await getAuthUser(c);
     if (!user) return c.json({ error: "Unauthorized" }, 401);
@@ -2802,7 +2958,7 @@ baseApp.put("/make-server-5252bcc1/customers/:customerId", async (c) => {
 });
 
 // Delete a customer record
-baseApp.delete("/make-server-5252bcc1/customers/:customerId", async (c) => {
+baseApp.delete("/customers/:customerId", async (c) => {
   try {
     const user = await getAuthUser(c);
     if (!user) return c.json({ error: "Unauthorized" }, 401);
@@ -2835,7 +2991,7 @@ baseApp.delete("/make-server-5252bcc1/customers/:customerId", async (c) => {
     // Clean up customer entries index if exists
     try {
       await kv.del(`customer_entries:${customerId}`);
-    } catch {}
+    } catch { }
 
     return c.json({
       success: true,
@@ -2848,7 +3004,7 @@ baseApp.delete("/make-server-5252bcc1/customers/:customerId", async (c) => {
 
 // Midnight rotation for a location (cron endpoint)
 baseApp.post(
-  "/make-server-5252bcc1/cron/midnight-rotation/:locationId",
+  "/cron/midnight-rotation/:locationId",
   async (c) => {
     try {
       const authHeader = c.req.header("Authorization")?.split(" ")[1];
@@ -2878,7 +3034,7 @@ baseApp.post(
       const result = await queueLogic.midnightRotation(locationId);
       console.log(
         `[cron/midnight] Location ${locationId}: closed ${result.closedPrevious} sessions, ` +
-          `cancelled ${result.cancelledEntries} entries`,
+        `cancelled ${result.cancelledEntries} entries`,
       );
       return c.json(result);
     } catch (err) {
@@ -2892,7 +3048,7 @@ baseApp.post(
 // ══════════════════════════════════════════════
 
 baseApp.get(
-  "/make-server-5252bcc1/analytics/advanced/:locationId",
+  "/analytics/advanced/:locationId",
   async (c) => {
     try {
       const user = await getAuthUser(c);
@@ -2967,7 +3123,7 @@ baseApp.get(
               acc +
               (new Date(e.called_at).getTime() -
                 new Date(e.joined_at).getTime()) /
-                60000,
+              60000,
             0,
           );
           avgWaitMinutes = Math.round((totalWait / withWait.length) * 10) / 10;
@@ -2983,7 +3139,7 @@ baseApp.get(
               acc +
               (new Date(e.completed_at).getTime() -
                 new Date(e.called_at).getTime()) /
-                60000,
+              60000,
             0,
           );
           avgServiceMinutes =
@@ -3265,7 +3421,7 @@ baseApp.get(
           Math.round(
             (window.reduce((acc: number, d: any) => acc + d.served, 0) /
               window.length) *
-              10,
+            10,
           ) / 10;
         sma7.push({ date: dailyTrend[i].date, sma: avg });
       }
@@ -3317,7 +3473,7 @@ baseApp.get(
 // ══════════════════════════════════════════════
 
 // Register / ensure customer record linked to auth user
-baseApp.post("/make-server-5252bcc1/customer/register", async (c) => {
+baseApp.post("/customer/register", async (c) => {
   try {
     const user = await getAuthUser(c);
     if (!user) return c.json({ error: "Unauthorized" }, 401);
@@ -3356,7 +3512,7 @@ baseApp.post("/make-server-5252bcc1/customer/register", async (c) => {
 });
 
 // Get customer profile
-baseApp.get("/make-server-5252bcc1/customer/profile", async (c) => {
+baseApp.get("/customer/profile", async (c) => {
   try {
     const user = await getAuthUser(c);
     if (!user) return c.json({ error: "Unauthorized" }, 401);
@@ -3369,7 +3525,7 @@ baseApp.get("/make-server-5252bcc1/customer/profile", async (c) => {
 });
 
 // Update customer profile
-baseApp.put("/make-server-5252bcc1/customer/profile", async (c) => {
+baseApp.put("/customer/profile", async (c) => {
   try {
     const user = await getAuthUser(c);
     if (!user) return c.json({ error: "Unauthorized" }, 401);
@@ -3403,7 +3559,7 @@ baseApp.put("/make-server-5252bcc1/customer/profile", async (c) => {
 });
 
 // Customer summary / analytics
-baseApp.get("/make-server-5252bcc1/customer/summary", async (c) => {
+baseApp.get("/customer/summary", async (c) => {
   try {
     const user = await getAuthUser(c);
     if (!user) return c.json({ error: "Unauthorized" }, 401);
@@ -3503,7 +3659,7 @@ baseApp.get("/make-server-5252bcc1/customer/summary", async (c) => {
 });
 
 // Customer visit history (paginated + filtered)
-baseApp.get("/make-server-5252bcc1/customer/history", async (c) => {
+baseApp.get("/customer/history", async (c) => {
   try {
     const user = await getAuthUser(c);
     if (!user) return c.json({ error: "Unauthorized" }, 401);
@@ -3588,7 +3744,7 @@ baseApp.get("/make-server-5252bcc1/customer/history", async (c) => {
 });
 
 // Auto-fill check for join page
-baseApp.get("/make-server-5252bcc1/customer/autofill", async (c) => {
+baseApp.get("/customer/autofill", async (c) => {
   try {
     const user = await getAuthUser(c);
     if (!user) return c.json({ customer: null });
@@ -3625,7 +3781,7 @@ baseApp.get("/make-server-5252bcc1/customer/autofill", async (c) => {
 // ══════════════════════════════════════════════
 
 // Get emergency status for a location (staff, auth required)
-baseApp.get("/make-server-5252bcc1/emergency/status/:locationId", async (c) => {
+baseApp.get("/emergency/status/:locationId", async (c) => {
   try {
     const user = await getAuthUser(c);
     if (!user) return c.json({ error: "Unauthorized" }, 401);
@@ -3647,7 +3803,7 @@ baseApp.get("/make-server-5252bcc1/emergency/status/:locationId", async (c) => {
 });
 
 // Public emergency status (for join page / status page)
-baseApp.get("/make-server-5252bcc1/public/emergency/:locationId", async (c) => {
+baseApp.get("/public/emergency/:locationId", async (c) => {
   try {
     const locationId = c.req.param("locationId");
     const emergency = (await kv.get(`emergency:${locationId}`)) || {
@@ -3667,7 +3823,7 @@ baseApp.get("/make-server-5252bcc1/public/emergency/:locationId", async (c) => {
 });
 
 // Pause / Resume queue (owner only)
-baseApp.post("/make-server-5252bcc1/emergency/pause/:locationId", async (c) => {
+baseApp.post("/emergency/pause/:locationId", async (c) => {
   try {
     const user = await getAuthUser(c);
     if (!user) return c.json({ error: "Unauthorized" }, 401);
@@ -3719,7 +3875,7 @@ baseApp.post("/make-server-5252bcc1/emergency/pause/:locationId", async (c) => {
 });
 
 // Emergency close — close all sessions + cancel all WAITING entries (owner only)
-baseApp.post("/make-server-5252bcc1/emergency/close/:locationId", async (c) => {
+baseApp.post("/emergency/close/:locationId", async (c) => {
   try {
     const user = await getAuthUser(c);
     if (!user) return c.json({ error: "Unauthorized" }, 401);
@@ -3793,7 +3949,7 @@ baseApp.post("/make-server-5252bcc1/emergency/close/:locationId", async (c) => {
 
 // Broadcast notice (owner only)
 baseApp.post(
-  "/make-server-5252bcc1/emergency/broadcast/:locationId",
+  "/emergency/broadcast/:locationId",
   async (c) => {
     try {
       const user = await getAuthUser(c);

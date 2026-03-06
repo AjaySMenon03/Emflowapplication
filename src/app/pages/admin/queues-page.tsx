@@ -15,7 +15,7 @@
  *   - Optimistic UI + realtime polling
  *   - Mobile-first responsive
  */
-import { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { useLocaleStore } from "../../stores/locale-store";
 import { useAuthStore } from "../../stores/auth-store";
 import { api } from "../../lib/api";
@@ -84,6 +84,10 @@ import {
   PlayCircle,
   SkipBack,
   UploadCloud,
+  Scissors,
+  Sparkles,
+  MoreHorizontal,
+  UserPlus,
 } from "lucide-react";
 
 // ── Types ──
@@ -105,6 +109,18 @@ interface QueueEntry {
   location_id: string;
   business_id: string;
   served_by: string | null;
+  service_id: string | null;
+  service_name: string | null;
+  estimatedMinutes?: number;
+}
+
+interface Service {
+  id: string;
+  business_id: string;
+  name: string;
+  description: string | null;
+  avg_service_time: number;
+  status: string;
 }
 
 interface QueueTypeInfo {
@@ -113,6 +129,7 @@ interface QueueTypeInfo {
   prefix: string;
   location_id: string;
   estimated_service_time: number;
+  service_ids?: string[];
 }
 
 interface StaffMember {
@@ -161,6 +178,9 @@ export function QueuesPage() {
   const [serving, setServing] = useState<QueueEntry[]>([]);
   const [completed, setCompleted] = useState<QueueEntry[]>([]);
 
+  const [services, setServices] = useState<Service[]>([]);
+  const [selectedServiceId, setSelectedServiceId] = useState<string>("all");
+
   const [staffList, setStaffList] = useState<StaffMember[]>([]);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
@@ -170,6 +190,13 @@ export function QueuesPage() {
 
   // Reassign dialog
   const [reassignEntry, setReassignEntry] = useState<QueueEntry | null>(null);
+
+  // ── Walk-In Dialog State ──
+  const [isWalkInOpen, setIsWalkInOpen] = useState(false);
+  const [walkInName, setWalkInName] = useState("");
+  const [walkInPhone, setWalkInPhone] = useState("");
+  const [walkInServiceId, setWalkInServiceId] = useState("");
+  const [isSubmittingWalkIn, setIsSubmittingWalkIn] = useState(false);
 
   // ── Offline Queue Drawer ──
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -262,7 +289,7 @@ export function QueuesPage() {
   useEffect(() => {
     if (!selectedLocation || !accessToken) return;
     (async () => {
-      const [{ data: qtData }, { data: staffData }] = await Promise.all([
+      const [{ data: qtData }, { data: staffData }, { data: svcData }] = await Promise.all([
         api<{ queueTypes: QueueTypeInfo[] }>(
           `/queue/types/${selectedLocation}`,
           { accessToken }
@@ -271,9 +298,14 @@ export function QueuesPage() {
           `/business/${businessId}/staff`,
           { accessToken }
         ),
+        api<{ services: Service[] }>(
+          `/settings/services/${businessId}`,
+          { accessToken }
+        ),
       ]);
       if (qtData?.queueTypes) setQueueTypes(qtData.queueTypes);
       if (staffData?.staff) setStaffList(staffData.staff);
+      if (svcData?.services) setServices(svcData.services);
     })();
   }, [selectedLocation, accessToken, businessId]);
 
@@ -575,10 +607,20 @@ export function QueuesPage() {
     setActionLoading(null);
   };
 
-  const filterByType = (entries: QueueEntry[]) =>
-    selectedQueueType === "all"
-      ? entries
-      : entries.filter((e) => e.queue_type_id === selectedQueueType);
+  const filterByType = (entries: QueueEntry[]) => {
+    let filtered = entries;
+    if (selectedQueueType !== "all") {
+      filtered = filtered.filter((e) => e.queue_type_id === selectedQueueType);
+    }
+    if (selectedServiceId !== "all") {
+      filtered = filtered.filter((e) => e.service_id === selectedServiceId);
+    }
+    return filtered;
+  };
+
+  const getWaitingCountForService = (serviceId: string) => {
+    return waiting.filter((e) => e.service_id === serviceId).length;
+  };
 
   const getStaffName = (authUid: string | null) => {
     if (!authUid) return null;
@@ -695,6 +737,18 @@ export function QueuesPage() {
                 {copiedSlug ? "Copied!" : "Share Join Link"}
               </span>
             </Button>
+
+            {/* Add Walk-In */}
+            <Button
+              variant="default"
+              size="sm"
+              onClick={() => setIsWalkInOpen(true)}
+              disabled={!selectedLocation}
+              className="gap-1.5 bg-primary hover:bg-primary/90"
+            >
+              <UserPlus className="h-3.5 w-3.5" />
+              <span>Add Walk-In</span>
+            </Button>
           </CardContent>
         </Card>
 
@@ -727,307 +781,253 @@ export function QueuesPage() {
           </div>
         )}
 
-        {/* ── Call Next buttons ── */}
-        {queueTypes.length > 0 && canCallAndMark(myRole) && (
+        {/* ── Service Filter ── */}
+        <section className="space-y-3">
+          <div className="flex items-center gap-2">
+            <div className="p-2 bg-primary/10 rounded-lg">
+              <Sparkles className="h-4 w-4 text-primary" />
+            </div>
+            <div>
+              <h2 className="text-sm font-semibold">Service Filter</h2>
+              <p className="text-[0.7rem] text-muted-foreground">View queue by service type</p>
+            </div>
+          </div>
           <div className="flex flex-wrap gap-2">
-            {(selectedQueueType === "all"
-              ? queueTypes
-              : queueTypes.filter((q) => q.id === selectedQueueType)
-            ).map((qt) => (
-              <div key={qt.id} className="flex items-center gap-1.5">
-                <Button
-                  onClick={() => handleCallNext(qt.id)}
-                  disabled={actionLoading === `call-${qt.id}`}
-                  className="gap-1.5 font-semibold"
-                  size="lg"
-                >
-                  {actionLoading === `call-${qt.id}` ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <PhoneForwarded className="h-4 w-4" />
-                  )}
-                  Call Next [{qt.prefix}]
-                </Button>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      variant="outline"
-                      size="lg"
-                      onClick={() => handleMarkPreviousServed(qt.id)}
-                      disabled={actionLoading === `prev-${qt.id}`}
-                      className="gap-1.5"
-                    >
-                      {actionLoading === `prev-${qt.id}` ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                      ) : (
-                        <SkipBack className="h-4 w-4" />
-                      )}
-                      <span className="hidden sm:inline">Mark Prev Served</span>
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>Mark the previous entry as served (if forgotten)</TooltipContent>
-                </Tooltip>
-              </div>
+            <Button
+              variant={selectedServiceId === "all" ? "default" : "outline"}
+              size="sm"
+              onClick={() => setSelectedServiceId("all")}
+              className="rounded-full h-8 px-4"
+            >
+              All Services
+              <Badge variant="secondary" className="ml-2 h-4 min-w-4 p-0 text-[10px] flex items-center justify-center bg-white/20 text-white">
+                {waiting.length}
+              </Badge>
+            </Button>
+            {services.map((svc) => (
+              <Button
+                key={svc.id}
+                variant={selectedServiceId === svc.id ? "default" : "outline"}
+                size="sm"
+                onClick={() => setSelectedServiceId(svc.id)}
+                className="rounded-full h-8 px-4"
+              >
+                {svc.name}
+                <Badge variant="secondary" className="ml-2 h-4 min-w-4 p-0 text-[10px] bg-muted/20">
+                  {getWaitingCountForService(svc.id)}
+                </Badge>
+              </Button>
             ))}
           </div>
-        )}
+        </section>
 
-        {/* ── Tabs ── */}
-        <Tabs defaultValue="waiting">
-          <TabsList className="w-full sm:w-auto">
-            <TabsTrigger value="waiting" className="gap-1.5 flex-1 sm:flex-initial">
-              <Clock className="h-3.5 w-3.5" />
-              <span className="hidden sm:inline">Waiting</span>
-              <Badge variant="secondary" className="ml-0.5 h-5 min-w-5 px-1.5 text-[0.65rem]">
+        {/* ── Service Counters ── */}
+        <section className="space-y-3">
+          <div className="flex items-center gap-2">
+            <div className="p-2 bg-primary/10 rounded-lg">
+              <Users className="h-4 w-4 text-primary" />
+            </div>
+            <h2 className="text-sm font-semibold">Service Counters</h2>
+            <Badge variant="secondary" className="text-[0.65rem]">{queueTypes.length} active</Badge>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {(selectedQueueType === "all"
+              ? queueTypes
+              : queueTypes.filter(qt => qt.id === selectedQueueType)
+            ).filter(qt => {
+              if (selectedServiceId === "all") return true;
+              return qt.service_ids?.includes(selectedServiceId);
+            }).map((qt, idx) => (
+              <CounterCard
+                key={qt.id}
+                qt={qt}
+                number={idx + 1}
+                servingEntries={serving.filter(e => e.queue_type_id === qt.id)}
+                nextEntries={nextEntries.filter(e => e.queue_type_id === qt.id)}
+                allServices={services}
+                actionLoading={actionLoading}
+                onCallNext={() => handleCallNext(qt.id)}
+                onMarkServed={(id) => handleMarkServed(id)}
+              />
+            ))}
+          </div>
+        </section>
+
+        {/* ── Waiting Queue ── */}
+        <section className="space-y-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <h2 className="text-sm font-semibold">Waiting Queue</h2>
+              <Badge variant="secondary" className="bg-primary text-primary-foreground h-5 w-5 p-0 flex items-center justify-center rounded-full text-[10px]">
                 {filterByType(waiting).length}
               </Badge>
-            </TabsTrigger>
-            <TabsTrigger value="serving" className="gap-1.5 flex-1 sm:flex-initial">
-              <PhoneForwarded className="h-3.5 w-3.5" />
-              <span className="hidden sm:inline">Serving</span>
-              <Badge variant="secondary" className="ml-0.5 h-5 min-w-5 px-1.5 text-[0.65rem]">
-                {filterByType(nextEntries).length + filterByType(serving).length}
-              </Badge>
-            </TabsTrigger>
-            <TabsTrigger value="completed" className="gap-1.5 flex-1 sm:flex-initial">
-              <CheckCircle2 className="h-3.5 w-3.5" />
-              <span className="hidden sm:inline">Done</span>
-              <Badge variant="secondary" className="ml-0.5 h-5 min-w-5 px-1.5 text-[0.65rem]">
-                {filterByType(completed).length}
-              </Badge>
-            </TabsTrigger>
-          </TabsList>
+            </div>
+            <ExternalLink className="h-4 w-4 text-muted-foreground/50" />
+          </div>
 
-          {/* ── WAITING ── */}
-          <TabsContent value="waiting" className="mt-3 space-y-1.5">
-            {filterByType(waiting).length === 0 ? (
-              <EmptyState message="No customers waiting" />
-            ) : (
-              filterByType(waiting).map((entry, idx) => (
-                <EntryCard
+          {filterByType(waiting).length === 0 ? (
+            <EmptyState message="No customers waiting" />
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {filterByType(waiting).map((entry, idx) => (
+                <WaitingEntryCard
                   key={entry.id}
                   entry={entry}
                   position={idx + 1}
-                  totalInList={filterByType(waiting).length}
-                  staffName={null}
-                  actions={
-                    <div className="flex items-center gap-1">
-                      {/* Reorder buttons (owner/admin only) */}
-                      {canReorder(myRole) && (
-                        <>
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <Button
-                                size="icon"
-                                variant="ghost"
-                                className="h-7 w-7"
-                                disabled={idx === 0 || !!actionLoading}
-                                onClick={() => handleMove(entry.id, "up")}
-                              >
-                                <ArrowUp className="h-3.5 w-3.5" />
-                              </Button>
-                            </TooltipTrigger>
-                            <TooltipContent>Move up</TooltipContent>
-                          </Tooltip>
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <Button
-                                size="icon"
-                                variant="ghost"
-                                className="h-7 w-7"
-                                disabled={
-                                  idx === filterByType(waiting).length - 1 ||
-                                  !!actionLoading
-                                }
-                                onClick={() => handleMove(entry.id, "down")}
-                              >
-                                <ArrowDown className="h-3.5 w-3.5" />
-                              </Button>
-                            </TooltipTrigger>
-                            <TooltipContent>Move down</TooltipContent>
-                          </Tooltip>
-                        </>
-                      )}
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <Button
-                            size="icon"
-                            variant="outline"
-                            className="h-7 w-7 text-destructive border-destructive/30"
-                            onClick={() => handleMarkNoShow(entry.id)}
-                            disabled={actionLoading === `noshow-${entry.id}`}
-                          >
-                            {actionLoading === `noshow-${entry.id}` ? (
-                              <Loader2 className="h-3 w-3 animate-spin" />
-                            ) : (
-                              <XCircle className="h-3.5 w-3.5" />
-                            )}
-                          </Button>
-                        </TooltipTrigger>
-                        <TooltipContent>No show</TooltipContent>
-                      </Tooltip>
-                    </div>
-                  }
+                  onNoShow={() => handleMarkNoShow(entry.id)}
+                  isActionLoading={actionLoading === `noshow-${entry.id}`}
                 />
-              ))
-            )}
-          </TabsContent>
+              ))}
+            </div>
+          )}
+        </section>
 
-          {/* ── SERVING ── */}
-          <TabsContent value="serving" className="mt-3 space-y-1.5">
-            {/* NEXT entries — called but not yet serving */}
-            {filterByType(nextEntries).length > 0 && (
-              <>
-                {filterByType(nextEntries).map((entry) => (
+        {/* ── Completed Tab (Optional, keep it small) ── */}
+        <Separator className="my-8" />
+        <Tabs defaultValue="completed">
+          <TabsList>
+            <TabsTrigger value="completed" className="gap-2">
+              <CheckCircle2 className="h-3.5 w-3.5" />
+              History
+            </TabsTrigger>
+          </TabsList>
+          <TabsContent value="completed" className="mt-3">
+            {filterByType(completed).length === 0 ? (
+              <EmptyState message="No completed entries yet" />
+            ) : (
+              <div className="space-y-1.5">
+                {filterByType(completed).slice(0, 10).map((entry) => (
                   <EntryCard
                     key={entry.id}
                     entry={entry}
                     staffName={getStaffName(entry.served_by)}
-                    actions={
-                      <div className="flex items-center gap-1">
-                        {canReassign(myRole) && (
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <Button
-                                size="icon"
-                                variant="ghost"
-                                className="h-7 w-7"
-                                onClick={() => setReassignEntry(entry)}
-                              >
-                                <UserRoundCog className="h-3.5 w-3.5" />
-                              </Button>
-                            </TooltipTrigger>
-                            <TooltipContent>Reassign staff</TooltipContent>
-                          </Tooltip>
-                        )}
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => handleStartServing(entry.id)}
-                          disabled={actionLoading === `start-${entry.id}`}
-                          className="gap-1 font-medium border-primary text-primary hover:bg-primary/10"
-                        >
-                          {actionLoading === `start-${entry.id}` ? (
-                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                          ) : (
-                            <PlayCircle className="h-3.5 w-3.5" />
-                          )}
-                          Start Serving
-                        </Button>
-                        <Button
-                          size="sm"
-                          onClick={() => handleMarkServed(entry.id)}
-                          disabled={actionLoading === `served-${entry.id}`}
-                          className="gap-1 font-medium"
-                        >
-                          {actionLoading === `served-${entry.id}` ? (
-                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                          ) : (
-                            <CheckCircle2 className="h-3.5 w-3.5" />
-                          )}
-                          Done
-                        </Button>
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Button
-                              size="icon"
-                              variant="outline"
-                              className="h-8 w-8 text-destructive border-destructive/30"
-                              onClick={() => handleMarkNoShow(entry.id)}
-                              disabled={actionLoading === `noshow-${entry.id}`}
-                            >
-                              <AlertTriangle className="h-3.5 w-3.5" />
-                            </Button>
-                          </TooltipTrigger>
-                          <TooltipContent>No show</TooltipContent>
-                        </Tooltip>
-                      </div>
-                    }
                   />
                 ))}
-                {filterByType(serving).length > 0 && (
-                  <Separator className="my-2" />
-                )}
-              </>
-            )}
-
-            {/* SERVING entries — actively being served */}
-            {filterByType(nextEntries).length === 0 && filterByType(serving).length === 0 ? (
-              <EmptyState message="No one being served" />
-            ) : (
-              filterByType(serving).map((entry) => (
-                <EntryCard
-                  key={entry.id}
-                  entry={entry}
-                  staffName={getStaffName(entry.served_by)}
-                  actions={
-                    <div className="flex items-center gap-1">
-                      {/* Reassign (owner/admin only) */}
-                      {canReassign(myRole) && (
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Button
-                              size="icon"
-                              variant="ghost"
-                              className="h-7 w-7"
-                              onClick={() => setReassignEntry(entry)}
-                            >
-                              <UserRoundCog className="h-3.5 w-3.5" />
-                            </Button>
-                          </TooltipTrigger>
-                          <TooltipContent>Reassign staff</TooltipContent>
-                        </Tooltip>
-                      )}
-                      <Button
-                        size="sm"
-                        onClick={() => handleMarkServed(entry.id)}
-                        disabled={actionLoading === `served-${entry.id}`}
-                        className="gap-1 font-medium"
-                      >
-                        {actionLoading === `served-${entry.id}` ? (
-                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                        ) : (
-                          <CheckCircle2 className="h-3.5 w-3.5" />
-                        )}
-                        Done
-                      </Button>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <Button
-                            size="icon"
-                            variant="outline"
-                            className="h-8 w-8 text-destructive border-destructive/30"
-                            onClick={() => handleMarkNoShow(entry.id)}
-                            disabled={actionLoading === `noshow-${entry.id}`}
-                          >
-                            <AlertTriangle className="h-3.5 w-3.5" />
-                          </Button>
-                        </TooltipTrigger>
-                        <TooltipContent>No show</TooltipContent>
-                      </Tooltip>
-                    </div>
-                  }
-                />
-              ))
-            )}
-          </TabsContent>
-
-          {/* ── COMPLETED ── */}
-          <TabsContent value="completed" className="mt-3 space-y-1.5">
-            {filterByType(completed).length === 0 ? (
-              <EmptyState message="No completed entries yet" />
-            ) : (
-              filterByType(completed).map((entry) => (
-                <EntryCard
-                  key={entry.id}
-                  entry={entry}
-                  staffName={getStaffName(entry.served_by)}
-                />
-              ))
+              </div>
             )}
           </TabsContent>
         </Tabs>
 
+        {/* ── Walk-In Dialog ── */}
+        <Dialog open={isWalkInOpen} onOpenChange={setIsWalkInOpen}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>Add Walk-In Customer</DialogTitle>
+              <DialogDescription>
+                Manually add a customer to the queue.
+              </DialogDescription>
+            </DialogHeader>
+
+            <form
+              onSubmit={async (e) => {
+                e.preventDefault();
+                if (!walkInName.trim()) {
+                  toast.error("Please enter a name");
+                  return;
+                }
+                if (!walkInServiceId) {
+                  toast.error("Please select a service");
+                  return;
+                }
+
+                setIsSubmittingWalkIn(true);
+                try {
+                  const location = locations.find((l) => l.id === selectedLocation);
+                  const { error: apiErr } = await api("/public/queue/join", {
+                    method: "POST",
+                    body: {
+                      serviceId: walkInServiceId,
+                      locationId: selectedLocation,
+                      businessId: businessId,
+                      name: walkInName.trim(),
+                      phone: walkInPhone.trim() || null,
+                      locale: useLocaleStore.getState().locale,
+                    },
+                  });
+
+                  if (apiErr) {
+                    toast.error(apiErr);
+                  } else {
+                    toast.success(`Customer ${walkInName} added!`);
+                    setIsWalkInOpen(false);
+                    setWalkInName("");
+                    setWalkInPhone("");
+                    setWalkInServiceId("");
+                    fetchEntries();
+                  }
+                } catch (err) {
+                  toast.error("Failed to add customer");
+                } finally {
+                  setIsSubmittingWalkIn(false);
+                }
+              }}
+              className="space-y-4 py-4"
+            >
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Customer Name</label>
+                <div className="relative">
+                  <Sparkles className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground/40" />
+                  <input
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-9 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                    placeholder="Enter name"
+                    value={walkInName}
+                    onChange={(e) => setWalkInName(e.target.value)}
+                    required
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Phone Number (Optional)</label>
+                <div className="relative">
+                  <Phone className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground/40" />
+                  <input
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-9 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                    placeholder="Enter phone number"
+                    value={walkInPhone}
+                    onChange={(e) => setWalkInPhone(e.target.value)}
+                    type="tel"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Select Service</label>
+                <Select value={walkInServiceId} onValueChange={setWalkInServiceId}>
+                  <SelectTrigger className="w-full">
+                    <Scissors className="h-3.5 w-3.5 mr-2 text-muted-foreground" />
+                    <SelectValue placeholder="Select a service" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {services.map((svc) => (
+                      <SelectItem key={svc.id} value={svc.id}>
+                        {svc.name} ({svc.avg_service_time} min)
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="flex justify-end gap-3 pt-4">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  onClick={() => setIsWalkInOpen(false)}
+                >
+                  Cancel
+                </Button>
+                <Button type="submit" disabled={isSubmittingWalkIn}>
+                  {isSubmittingWalkIn ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    "Join Queue"
+                  )}
+                </Button>
+              </div>
+            </form>
+          </DialogContent>
+        </Dialog>
         {/* ── Reassign Dialog ── */}
         <Dialog
           open={!!reassignEntry}
@@ -1052,11 +1052,10 @@ export function QueuesPage() {
                 .map((s) => (
                   <button
                     key={s.auth_user_id}
-                    className={`flex w-full items-center gap-3 rounded-lg border p-3 text-left transition-colors hover:bg-accent/50 ${
-                      reassignEntry?.served_by === s.auth_user_id
-                        ? "border-primary bg-primary/5"
-                        : "border-border"
-                    }`}
+                    className={`flex w-full items-center gap-3 rounded-lg border p-3 text-left transition-colors hover:bg-accent/50 ${reassignEntry?.served_by === s.auth_user_id
+                      ? "border-primary bg-primary/5"
+                      : "border-border"
+                      }`}
                     onClick={() => handleReassign(s.auth_user_id)}
                     disabled={
                       !!actionLoading ||
@@ -1086,10 +1085,10 @@ export function QueuesPage() {
                 ))}
               {staffList.filter((s) => s.locations.includes(selectedLocation))
                 .length === 0 && (
-                <p className="text-sm text-muted-foreground text-center py-4">
-                  No staff assigned to this location
-                </p>
-              )}
+                  <p className="text-sm text-muted-foreground text-center py-4">
+                    No staff assigned to this location
+                  </p>
+                )}
             </div>
           </DialogContent>
         </Dialog>
@@ -1162,6 +1161,11 @@ function EntryCard({
             <Badge variant={style.variant} className="text-[0.6rem] h-[18px] px-1.5">
               {style.label}
             </Badge>
+            {entry.service_name && (
+              <Badge variant="secondary" className="text-[0.6rem] h-[18px] px-1.5 bg-primary/5 text-primary border-primary/10">
+                {entry.service_name}
+              </Badge>
+            )}
             {position != null && (
               <span className="flex items-center gap-0.5 text-xs text-muted-foreground">
                 <Hash className="h-3 w-3" />
@@ -1195,6 +1199,207 @@ function EntryCard({
 
         {/* Actions */}
         {actions && <div className="shrink-0">{actions}</div>}
+      </CardContent>
+    </Card>
+  );
+}
+
+function CounterCard({
+  qt,
+  number,
+  servingEntries,
+  nextEntries,
+  allServices,
+  actionLoading,
+  onCallNext,
+  onMarkServed,
+}: {
+  qt: QueueTypeInfo;
+  number: number;
+  servingEntries: QueueEntry[];
+  nextEntries: QueueEntry[];
+  allServices: Service[];
+  actionLoading: string | null;
+  onCallNext: () => void;
+  onMarkServed: (id: string) => void;
+}) {
+  const isServing = servingEntries.length > 0 || nextEntries.length > 0;
+  const currentEntry = servingEntries[0] || nextEntries[0];
+
+  // Get service names for this counter
+  const counterServices = allServices.filter((s) => qt.service_ids?.includes(s.id));
+  const serviceText =
+    counterServices.length === 0
+      ? "All services"
+      : counterServices.length === 1
+        ? counterServices[0].name
+        : counterServices.length === 2
+          ? `${counterServices[0].name}, ${counterServices[1].name}`
+          : `${counterServices[0].name}, ${counterServices[1].name} +${counterServices.length - 2}`;
+
+  return (
+    <Card className={`overflow-hidden transition-all duration-300 border-2 ${isServing ? "border-amber-200 shadow-amber-100" : "border-emerald-200 shadow-emerald-100"} hover:shadow-md`}>
+      <CardContent className="p-0">
+        <div className="p-4 space-y-4">
+          <div className="flex items-start justify-between">
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-muted text-lg font-bold">
+                {number}
+              </div>
+              <div className="min-w-0">
+                <h3 className="font-bold text-base truncate">{qt.name}</h3>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <p className="text-[0.7rem] text-muted-foreground truncate cursor-help">
+                      {serviceText}
+                    </p>
+                  </TooltipTrigger>
+                  {counterServices.length > 2 && (
+                    <TooltipContent>
+                      <ul className="text-xs space-y-1">
+                        {counterServices.map(s => <li key={s.id}>{s.name}</li>)}
+                      </ul>
+                    </TooltipContent>
+                  )}
+                </Tooltip>
+              </div>
+            </div>
+            <Badge
+              variant={isServing ? "default" : "outline"}
+              className={`text-[0.65rem] ${isServing ? "bg-amber-500 hover:bg-amber-600" : "text-emerald-600 border-emerald-200 bg-emerald-50"}`}
+            >
+              {isServing ? "Serving" : "Available"}
+            </Badge>
+          </div>
+
+          <div className="min-h-[80px] flex flex-col justify-center">
+            {isServing ? (
+              <div className="bg-amber-50 rounded-xl p-3 border border-amber-100 flex items-center justify-between">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-lg font-bold text-amber-900">#{currentEntry.ticket_number}</span>
+                    <span className="text-sm font-medium text-amber-800">{currentEntry.customer_name || "Guest"}</span>
+                  </div>
+                  {currentEntry.service_name && (
+                    <p className="text-[0.65rem] text-amber-700 font-medium uppercase tracking-wider mt-0.5">
+                      {currentEntry.service_name}
+                    </p>
+                  )}
+                </div>
+                <Users className="h-5 w-5 text-amber-300" />
+              </div>
+            ) : (
+              <div className="flex flex-col items-center justify-center py-2 text-muted-foreground/40">
+                <Clock className="h-6 w-6 mb-1" />
+                <p className="text-[0.65rem] font-medium">No customers waiting</p>
+              </div>
+            )}
+          </div>
+
+          {isServing ? (
+            <div className="flex gap-2">
+              <Button
+                className="flex-1 bg-emerald-600 hover:bg-emerald-700 h-10 gap-2 font-bold"
+                onClick={() => onMarkServed(currentEntry.id)}
+                disabled={actionLoading === `served-${currentEntry.id}`}
+              >
+                {actionLoading === `served-${currentEntry.id}` ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <CheckCircle2 className="h-4 w-4" />
+                )}
+                Served
+              </Button>
+              <Button variant="outline" size="icon" className="h-10 w-10 shrink-0">
+                <MoreHorizontal className="h-4 w-4" />
+              </Button>
+            </div>
+          ) : (
+            <Button
+              className="w-full bg-primary hover:bg-primary/90 h-11 gap-2 text-base font-bold shadow-lg shadow-primary/20 transition-all active:scale-95"
+              onClick={onCallNext}
+              disabled={actionLoading === `call-${qt.id}`}
+            >
+              {actionLoading === `call-${qt.id}` ? (
+                <Loader2 className="h-5 w-5 animate-spin" />
+              ) : (
+                <PhoneForwarded className="h-5 w-5" />
+              )}
+              Call Next
+            </Button>
+          )}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function WaitingEntryCard({
+  entry,
+  position,
+  onNoShow,
+  isActionLoading,
+}: {
+  entry: QueueEntry;
+  position: number;
+  onNoShow: () => void;
+  isActionLoading: boolean;
+}) {
+  return (
+    <Card className="overflow-hidden border border-border/60 hover:border-primary/30 transition-all hover:shadow-md group">
+      <CardContent className="p-0">
+        <div className="p-4 space-y-4">
+          <div className="flex items-start justify-between">
+            <div className="flex items-center gap-3">
+              <div className="flex flex-col items-center justify-center h-12 w-12 rounded-lg bg-muted/50 border border-muted-foreground/10">
+                <span className="text-[0.6rem] font-bold text-muted-foreground/60 uppercase">Pos</span>
+                <span className="text-base font-black text-primary -mt-1">#{position}</span>
+              </div>
+              <div className="min-w-0">
+                <h3 className="font-bold text-base text-foreground truncate">{entry.customer_name || "Guest"}</h3>
+                <Badge variant="secondary" className="text-[0.6rem] h-4 bg-blue-50 text-blue-600 border-none px-1.5 font-bold uppercase tracking-tighter">
+                  Waiting
+                </Badge>
+              </div>
+            </div>
+            <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground/40 group-hover:text-muted-foreground transition-colors">
+              <MoreHorizontal className="h-4 w-4" />
+            </Button>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4 py-1">
+            <div className="space-y-1">
+              <p className="text-[0.6rem] font-bold text-muted-foreground/60 uppercase tracking-widest">Service Name</p>
+              <div className="flex items-center gap-1.5 text-xs font-semibold text-foreground/80">
+                {/* <Phone className="h-3 w-3 text-muted-foreground/40" /> */}
+                {entry.service_name ? entry.service_name : <span className="text-muted-foreground/30">—</span>}
+              </div>
+            </div>
+            {/* <div className="space-y-1">
+              <p className="text-[0.6rem] font-bold text-muted-foreground/60 uppercase tracking-widest">Party Size</p>
+              <div className="flex items-center gap-1.5 text-xs font-semibold text-foreground/80">
+                <Users className="h-3 w-3 text-muted-foreground/40" />
+                1 Person
+              </div>
+            </div> */}
+          </div>
+
+          <div className="pt-2 border-t border-dashed border-border/60">
+            <p className="text-[0.6rem] font-bold text-muted-foreground/60 uppercase tracking-widest mb-1">Elapsed Time</p>
+            <div className="flex items-center gap-1.5 text-xs font-bold text-primary">
+              <Clock className="h-3.5 w-3.5" />
+              Wait time: <span className="font-black">
+                {entry.estimatedMinutes !== undefined
+                  ? entry.estimatedMinutes < 1
+                    ? "Next"
+                    : entry.estimatedMinutes > 60
+                      ? `about ${Math.round(entry.estimatedMinutes / 60)} hour${Math.round(entry.estimatedMinutes / 60) > 1 ? "s" : ""}`
+                      : `${entry.estimatedMinutes} min`
+                  : "..."}
+              </span>
+            </div>
+          </div>
+        </div>
       </CardContent>
     </Card>
   );

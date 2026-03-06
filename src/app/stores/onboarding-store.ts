@@ -59,6 +59,7 @@ interface OnboardingState {
   locationCity: string;
   locationPhone: string;
   timezone: string;
+  country: string;
   // Step 3 - Queue Types
   queueTypes: QueueTypeInput[];
   // Step 4 - Business Hours
@@ -100,6 +101,7 @@ export const useOnboardingStore = create<OnboardingState>((set, get) => ({
   locationCity: "",
   locationPhone: "",
   timezone: "Europe/Istanbul",
+  country: "",
   queueTypes: [
     { name: "General", prefix: "G", description: "General inquiry", estimatedServiceTime: 10, maxCapacity: 100 },
   ],
@@ -172,6 +174,7 @@ export const useOnboardingStore = create<OnboardingState>((set, get) => ({
       locationCity: "",
       locationPhone: "",
       timezone: "Europe/Istanbul",
+      country: "",
       queueTypes: [
         { name: "General", prefix: "G", description: "General inquiry", estimatedServiceTime: 10, maxCapacity: 100 },
       ],

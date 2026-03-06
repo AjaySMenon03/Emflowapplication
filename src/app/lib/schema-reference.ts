@@ -17,6 +17,8 @@
  *   business_hours:{loc_id}      → BusinessHours record
  *   business_owner:{biz_id}      → owner auth UID
  *   whatsapp_settings:{biz_id}   → WhatsApp config
+ *   service:{uuid}              → Service record
+ *   business_services:{biz_id}  → string[] of service IDs
  *   location_sessions:{loc_id}  → string[] of session IDs (for lifecycle tracking)
  *   queue_session_today:{qt_id}:{date} → session ID for today's session
  *   session_entries:{session_id}→ string[] of entry IDs
@@ -281,6 +283,17 @@ export interface Location {
   updated_at: string;
 }
 
+export interface Service {
+  id: string;
+  business_id: string;
+  name: string;
+  description: string | null;
+  avg_service_time: number;
+  status: EntityStatus;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface QueueType {
   id: string;
   business_id: string;
@@ -290,6 +303,7 @@ export interface QueueType {
   description: string | null;
   estimated_service_time: number;
   max_capacity: number;
+  service_ids: string[];
   status: EntityStatus;
   sort_order: number;
   created_at: string;
@@ -359,6 +373,8 @@ export interface QueueEntry {
   cancelled_at: string | null;
   estimated_wait_minutes: number | null;
   notes: string | null;
+  service_id: string | null;
+  service_name: string | null;
   created_at: string;
 }
 
