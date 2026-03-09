@@ -102,7 +102,39 @@ export function register(app: Hono) {
         const svc = await kv.get(`service:${sid}`);
         if (svc && svc.status === "active") services.push(svc);
       }
-      return c.json({ location, business, queueTypes, services });
+
+      // Compute which services have exhausted their daily capacity in-memory.
+      const locationEntries = await queueLogic.getLocationEntries(locationId);
+      const todayStr = queueLogic.today();
+      const exhaustedServiceIds: string[] = [];
+      for (const svc of services) {
+        const compatibleCounters = queueTypes.filter((qt: any) =>
+          (qt.service_ids || []).includes(svc.id),
+        );
+        if (compatibleCounters.length === 0) continue;
+        const totalCapacity = compatibleCounters.reduce(
+          (sum: number, qt: any) => sum + (qt.max_capacity || 1),
+          0,
+        );
+        const compatibleQtIds = new Set(
+          compatibleCounters.map((qt: any) => qt.id),
+        );
+        const servedToday = locationEntries.filter(
+          (e: any) =>
+            compatibleQtIds.has(e.queue_type_id) &&
+            e.status === "served" &&
+            (e.joined_at || "").startsWith(todayStr),
+        ).length;
+        if (servedToday >= totalCapacity) exhaustedServiceIds.push(svc.id);
+      }
+
+      return c.json({
+        location,
+        business,
+        queueTypes,
+        services,
+        exhaustedServiceIds,
+      });
     } catch (err: any) {
       return c.json(
         { error: `Public location fetch failed: ${err.message}` },

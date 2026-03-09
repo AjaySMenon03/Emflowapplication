@@ -219,6 +219,30 @@ export function QueuesPage() {
   const [walkInServiceId, setWalkInServiceId] = useState("");
   const [isSubmittingWalkIn, setIsSubmittingWalkIn] = useState(false);
 
+  // Derived: block walk-in if daily limit hit OR every compatible counter is unavailable
+  const isWalkInBlocked =
+    walkInServiceId !== "" &&
+    (() => {
+      if (exhaustedServiceIds.includes(walkInServiceId)) return true;
+      const compatible = queueTypes.filter((qt) =>
+        qt.service_ids?.includes(walkInServiceId),
+      );
+      // No counters assigned, or all assigned counters are unavailable
+      return (
+        compatible.length === 0 ||
+        compatible.every((qt) => unavailableCounters.has(qt.id))
+      );
+    })();
+
+  // Derived: true when every service is blocked (exhausted or no counter) — disables the Add Walk-In button
+  const allServicesBlocked =
+    services.length > 0 &&
+    services.every(
+      (svc) =>
+        exhaustedServiceIds.includes(svc.id) ||
+        !queueTypes.some((qt) => (qt.service_ids || []).includes(svc.id)),
+    );
+
   // ── Offline Queue Drawer ──
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [pendingCount, setPendingCount] = useState(() => getPendingCount());
@@ -896,7 +920,7 @@ export function QueuesPage() {
               variant="default"
               size="sm"
               onClick={() => setIsWalkInOpen(true)}
-              disabled={!selectedLocation}
+              disabled={!selectedLocation || allServicesBlocked}
               className="gap-1.5 bg-primary hover:bg-primary/90"
             >
               <UserPlus className="h-3.5 w-3.5" />
@@ -1203,7 +1227,10 @@ export function QueuesPage() {
                 >
                   Cancel
                 </Button>
-                <Button type="submit" disabled={isSubmittingWalkIn}>
+                <Button
+                  type="submit"
+                  disabled={isSubmittingWalkIn || isWalkInBlocked}
+                >
                   {isSubmittingWalkIn ? (
                     <Loader2 className="h-4 w-4 animate-spin" />
                   ) : (
