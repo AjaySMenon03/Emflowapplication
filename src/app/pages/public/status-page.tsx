@@ -13,17 +13,22 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams } from "react-router";
 import { api } from "../../lib/api";
 import { useRealtimePublic } from "../../lib/use-realtime";
-import { useLocaleStore, type Locale, LOCALE_LABELS } from "../../stores/locale-store";
+import {
+  useLocaleStore,
+  type Locale,
+  LOCALE_LABELS,
+} from "../../stores/locale-store";
 import { usePushNotifications } from "../../lib/use-pwa";
-import { useNetworkStatus, cacheSet, cacheGet } from "../../lib/use-network-status";
+import {
+  useNetworkStatus,
+  cacheSet,
+  cacheGet,
+} from "../../lib/use-network-status";
 import { OfflineBanner } from "../../components/offline-banner";
 import { enqueue } from "../../lib/offline-queue";
 import { toast } from "sonner";
 import { Button } from "../../components/ui/button";
-import {
-  Card,
-  CardContent,
-} from "../../components/ui/card";
+import { Card, CardContent } from "../../components/ui/card";
 import {
   Select,
   SelectContent,
@@ -58,6 +63,7 @@ interface StatusData {
     ticket_number: string;
     status: string;
     queue_type_name: string | null;
+    service_name: string | null;
     joined_at: string;
     called_at: string | null;
     customer_name: string | null;
@@ -68,6 +74,7 @@ interface StatusData {
   estimatedMinutes: number;
   location: { name: string; address: string | null } | null;
   businessName: string | null;
+  serviceExhausted?: boolean;
 }
 
 const STATUS_CONFIG: Record<
@@ -127,14 +134,16 @@ const STATUS_CONFIG: Record<
     bg: "bg-amber-500/10",
     icon: Clock,
     title: "You're in Waiting list",
-    message: "The maximum customer count is reached. You are in the waiting list. If any of the confirmed customers is no-show or canceled, you will be considered as next.",
+    message:
+      "The maximum customer count is reached. You are in the waiting list. If any of the confirmed customers is no-show or canceled, you will be considered as next.",
   },
 };
 
 export function StatusPage() {
   const { entryId } = useParams<{ entryId: string }>();
   const { locale, setLocale, t } = useLocaleStore();
-  const { showNotification, permission, requestPermission } = usePushNotifications();
+  const { showNotification, permission, requestPermission } =
+    usePushNotifications();
 
   const [data, setData] = useState<StatusData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -148,11 +157,12 @@ export function StatusPage() {
 
   // ── Offline Resilience ──
   const STATUS_CACHE_KEY = `customer-status:${entryId}`;
-  const { isOnline, isReconnecting, lastSyncedAt, markSynced } = useNetworkStatus({
-    onReconnect: () => {
-      fetchStatus();
-    },
-  });
+  const { isOnline, isReconnecting, lastSyncedAt, markSynced } =
+    useNetworkStatus({
+      onReconnect: () => {
+        fetchStatus();
+      },
+    });
 
   // Cache status data when online
   useEffect(() => {
@@ -176,7 +186,7 @@ export function StatusPage() {
     if (!entryId) return;
     try {
       const { data: statusData, error: apiErr } = await api<StatusData>(
-        `/public/queue/status/${entryId}`
+        `/public/queue/status/${entryId}`,
       );
       if (apiErr || !statusData) {
         if (!data) setError(apiErr || "Entry not found");
@@ -216,9 +226,10 @@ export function StatusPage() {
 
       // Fetch emergency broadcast for this location
       if (statusData.entry.location_id) {
-        const { data: emergencyData } = await api<{ paused: boolean; broadcast: string | null }>(
-          `/public/emergency/${statusData.entry.location_id}`
-        );
+        const { data: emergencyData } = await api<{
+          paused: boolean;
+          broadcast: string | null;
+        }>(`/public/emergency/${statusData.entry.location_id}`);
         if (emergencyData) {
           setBroadcastNotice(emergencyData.broadcast);
         }
@@ -260,10 +271,9 @@ export function StatusPage() {
     }
 
     try {
-      const { error: apiErr } = await api(
-        `/public/queue/cancel/${entryId}`,
-        { method: "POST" }
-      );
+      const { error: apiErr } = await api(`/public/queue/cancel/${entryId}`, {
+        method: "POST",
+      });
       if (apiErr) {
         setError(apiErr);
         return;
@@ -304,7 +314,9 @@ export function StatusPage() {
             <Zap className="h-7 w-7 text-primary-foreground" />
           </div>
           <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-          <p className="text-sm text-muted-foreground">Loading your status...</p>
+          <p className="text-sm text-muted-foreground">
+            Loading your status...
+          </p>
         </div>
       </div>
     );
@@ -312,15 +324,45 @@ export function StatusPage() {
 
   // ── Error / not found ──
   if (!data) {
+    // Distinguish between a transient service error and a genuinely missing entry
+    const isTransientError =
+      error !== "" &&
+      error !== "Entry not found" &&
+      !error.toLowerCase().includes("not found");
+
     return (
       <div className="flex min-h-screen items-center justify-center bg-background p-4">
         <Card className="w-full max-w-md text-center">
-          <CardContent className="py-12">
-            <AlertTriangle className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
-            <h2 className="text-foreground mb-2">Entry Not Found</h2>
+          <CardContent className="py-12 space-y-4">
+            {isTransientError ? (
+              <Wifi className="mx-auto h-12 w-12 text-amber-400 mb-4" />
+            ) : (
+              <AlertTriangle className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
+            )}
+            <h2 className="text-foreground">
+              {isTransientError ? "Service Unavailable" : "Entry Not Found"}
+            </h2>
             <p className="text-muted-foreground text-sm">
-              {error || "This queue entry doesn't exist or has expired."}
+              {isTransientError
+                ? "We're having trouble reaching the server. Please try again."
+                : "This queue entry doesn't exist or has expired."}
             </p>
+            {isTransientError && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setLoading(true);
+                  fetchStatus();
+                }}
+                className="gap-2"
+              >
+                <Loader2
+                  className={loading ? "h-4 w-4 animate-spin" : "h-4 w-4"}
+                />
+                Try Again
+              </Button>
+            )}
           </CardContent>
         </Card>
       </div>
@@ -328,9 +370,25 @@ export function StatusPage() {
   }
 
   const status = data.entry.status;
-  const config = STATUS_CONFIG[status] || STATUS_CONFIG.waiting;
+  const isExhaustedWaitlist =
+    status === "waitlisted" && data.serviceExhausted === true;
+  const config = isExhaustedWaitlist
+    ? {
+        color: "text-red-600 dark:text-red-400",
+        bg: "bg-red-500/10",
+        icon: Ban,
+        title: "Slot Not Confirmed",
+        message: `We apologize, but the maximum daily limit of customers for ${
+          data.entry.service_name || "this service"
+        } has already been reached. No further tickets will be confirmed today.`,
+      }
+    : STATUS_CONFIG[status] || STATUS_CONFIG.waiting;
   const StatusIcon = config.icon;
-  const isActive = status === "waiting" || status === "next" || status === "serving" || status === "waitlisted";
+  const isActive =
+    status === "waiting" ||
+    status === "next" ||
+    status === "serving" ||
+    status === "waitlisted";
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-primary/5 to-background">
@@ -347,7 +405,10 @@ export function StatusPage() {
           </div>
           <div className="flex items-center gap-1.5">
             <Globe className="h-3.5 w-3.5 text-muted-foreground" />
-            <Select value={locale} onValueChange={(v) => setLocale(v as Locale)}>
+            <Select
+              value={locale}
+              onValueChange={(v) => setLocale(v as Locale)}
+            >
               <SelectTrigger className="h-8 w-24 text-xs border-0 bg-transparent">
                 <SelectValue />
               </SelectTrigger>
@@ -365,7 +426,11 @@ export function StatusPage() {
 
       <div className="mx-auto max-w-lg px-4 py-6 sm:py-10 space-y-5">
         {/* Offline Banner */}
-        <OfflineBanner isOnline={isOnline} isReconnecting={isReconnecting} lastSyncedAt={lastSyncedAt} />
+        <OfflineBanner
+          isOnline={isOnline}
+          isReconnecting={isReconnecting}
+          lastSyncedAt={lastSyncedAt}
+        />
 
         {/* Error banner */}
         {error && (
@@ -394,15 +459,21 @@ export function StatusPage() {
         {/* Ticket number hero */}
         <Card className="overflow-hidden">
           <div className={`${config.bg} px-6 py-8 text-center`}>
-            <div className={`mx-auto mb-3 flex h-16 w-16 items-center justify-center rounded-full ${config.bg}`}>
+            <div
+              className={`mx-auto mb-3 flex h-16 w-16 items-center justify-center rounded-full ${config.bg}`}
+            >
               <StatusIcon className={`h-8 w-8 ${config.color}`} />
             </div>
             <p className="text-xs uppercase tracking-wider text-muted-foreground mb-1">
               {data.entry.queue_type_name || "Queue"}
             </p>
-            {/* <h1 className={`text-5xl font-bold tracking-tight ${config.color} mb-2`}>
-              {data.entry.ticket_number}
-            </h1> */}
+            {status === "waitlisted" && (
+              <h1
+                className={`text-5xl font-bold tracking-tight ${config.color} mb-2`}
+              >
+                {data.entry.ticket_number}
+              </h1>
+            )}
             <p className="text-foreground font-medium">{config.title}</p>
             <p className="text-muted-foreground text-sm mt-1">
               {config.message}
@@ -416,10 +487,14 @@ export function StatusPage() {
                 <div className="px-6 py-5 text-center">
                   <div className="flex items-center justify-center gap-1.5 text-muted-foreground mb-1">
                     <Users className="h-3.5 w-3.5" />
-                    <span className="text-xs uppercase tracking-wider">Position</span>
+                    <span className="text-xs uppercase tracking-wider">
+                      Position
+                    </span>
                   </div>
                   <p className="text-3xl font-bold text-foreground">
-                    {(status === "serving" || status === "next") ? "Next!" : `#${data.position}`}
+                    {status === "serving" || status === "next"
+                      ? "Next!"
+                      : `#${data.position}`}
                   </p>
                   {status === "waiting" && (
                     <p className="text-xs text-muted-foreground mt-0.5">
@@ -430,10 +505,14 @@ export function StatusPage() {
                 <div className="px-6 py-5 text-center">
                   <div className="flex items-center justify-center gap-1.5 text-muted-foreground mb-1">
                     <Clock className="h-3.5 w-3.5" />
-                    <span className="text-xs uppercase tracking-wider">Est. Wait</span>
+                    <span className="text-xs uppercase tracking-wider">
+                      Est. Wait
+                    </span>
                   </div>
                   <p className="text-3xl font-bold text-foreground">
-                    {(status === "serving" || status === "next") ? "0" : data.estimatedMinutes}
+                    {status === "serving" || status === "next"
+                      ? "0"
+                      : data.estimatedMinutes}
                   </p>
                   <p className="text-xs text-muted-foreground mt-0.5">
                     minutes
@@ -458,17 +537,16 @@ export function StatusPage() {
         {/* Customer greeting */}
         {data.entry.customer_name && (
           <p className="text-center text-sm text-muted-foreground">
-            Welcome, <span className="text-foreground font-medium">{data.entry.customer_name}</span>
+            Welcome,{" "}
+            <span className="text-foreground font-medium">
+              {data.entry.customer_name}
+            </span>
           </p>
         )}
 
         {/* Actions */}
         <div className="flex gap-3">
-          <Button
-            variant="outline"
-            className="flex-1"
-            onClick={handleShare}
-          >
+          <Button variant="outline" className="flex-1" onClick={handleShare}>
             {copied ? (
               <>
                 <CheckCircle2 className="mr-2 h-4 w-4 text-emerald-500" />
@@ -516,7 +594,9 @@ export function StatusPage() {
         {isActive && permission === "granted" && (
           <div className="flex items-center justify-center gap-2 text-xs text-emerald-600 dark:text-emerald-400">
             <Bell className="h-3.5 w-3.5" />
-            <span>Notifications enabled — we'll alert you when it's your turn</span>
+            <span>
+              Notifications enabled — we'll alert you when it's your turn
+            </span>
           </div>
         )}
 
@@ -533,7 +613,9 @@ export function StatusPage() {
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
                 <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
               </span>
-              <span className="text-emerald-600 dark:text-emerald-400">Live</span>
+              <span className="text-emerald-600 dark:text-emerald-400">
+                Live
+              </span>
             </span>
           )}
         </p>

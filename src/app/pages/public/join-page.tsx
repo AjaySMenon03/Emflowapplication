@@ -10,7 +10,11 @@
 import React, { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router";
 import { api } from "../../lib/api";
-import { useLocaleStore, type Locale, LOCALE_LABELS } from "../../stores/locale-store";
+import {
+  useLocaleStore,
+  type Locale,
+  LOCALE_LABELS,
+} from "../../stores/locale-store";
 import { useAuthStore } from "../../stores/auth-store";
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
@@ -52,6 +56,7 @@ interface QueueTypeInfo {
   prefix: string;
   description: string | null;
   estimated_service_time: number;
+  service_ids?: string[];
 }
 
 interface Service {
@@ -82,7 +87,10 @@ export function JoinPage() {
   const [businessName, setBusinessName] = useState("");
   const [queueTypes, setQueueTypes] = useState<QueueTypeInfo[]>([]);
   const [isOpen, setIsOpen] = useState<boolean | null>(null);
-  const [todayHours, setTodayHours] = useState<{ openTime: string; closeTime: string } | null>(null);
+  const [todayHours, setTodayHours] = useState<{
+    openTime: string;
+    closeTime: string;
+  } | null>(null);
 
   // Returning customer state
   const [isReturning, setIsReturning] = useState(false);
@@ -99,13 +107,19 @@ export function JoinPage() {
   const [email, setEmail] = useState("");
   const [services, setServices] = useState<Service[]>([]);
   const [selectedServiceId, setSelectedServiceId] = useState("");
+  const [exhaustedServiceIds, setExhaustedServiceIds] = useState<string[]>([]);
 
   // Auto-fill from customer profile if authenticated
   useEffect(() => {
     async function checkAutofill() {
       if (!isAuthenticated || !session?.access_token) return;
       const { data } = await api<{
-        customer: { name: string; phone: string; email: string; preferred_language: string } | null;
+        customer: {
+          name: string;
+          phone: string;
+          email: string;
+          preferred_language: string;
+        } | null;
         isReturning: boolean;
       }>("/customer/autofill", { accessToken: session.access_token });
 
@@ -134,6 +148,7 @@ export function JoinPage() {
         business: { name: string };
         queueTypes: QueueTypeInfo[];
         services: Service[];
+        exhaustedServiceIds?: string[];
       }>(`/public/location/${locationSlug}`);
 
       if (apiErr || !data) {
@@ -146,6 +161,7 @@ export function JoinPage() {
       setBusinessName(data.business?.name || "");
       setQueueTypes(data.queueTypes || []);
       setServices(data.services || []);
+      setExhaustedServiceIds(data.exhaustedServiceIds || []);
 
       if (data.services?.length === 1) {
         setSelectedServiceId(data.services[0].id);
@@ -157,10 +173,10 @@ export function JoinPage() {
       if (data.location?.id) {
         const [hoursRes, emergencyRes] = await Promise.all([
           api<{ hours: any; isOpen: boolean; today: string }>(
-            `/public/business-hours/${data.location.id}`
+            `/public/business-hours/${data.location.id}`,
           ),
           api<{ paused: boolean; broadcast: string | null }>(
-            `/public/emergency/${data.location.id}`
+            `/public/emergency/${data.location.id}`,
           ),
         ]);
         if (hoursRes.data) {
@@ -276,7 +292,10 @@ export function JoinPage() {
           {/* Language switcher */}
           <div className="flex items-center gap-1.5">
             <Globe className="h-3.5 w-3.5 text-muted-foreground" />
-            <Select value={locale} onValueChange={(v: string) => setLocale(v as Locale)}>
+            <Select
+              value={locale}
+              onValueChange={(v: string) => setLocale(v as Locale)}
+            >
               <SelectTrigger className="h-8 w-24 text-xs border-0 bg-transparent">
                 <SelectValue />
               </SelectTrigger>
@@ -312,12 +331,15 @@ export function JoinPage() {
           {isOpen !== null && (
             <div className="mt-2 flex items-center justify-center gap-2">
               <span
-                className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium ${isOpen
-                  ? "bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400"
-                  : "bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400"
-                  }`}
+                className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium ${
+                  isOpen
+                    ? "bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400"
+                    : "bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400"
+                }`}
               >
-                <span className={`h-1.5 w-1.5 rounded-full ${isOpen ? "bg-emerald-500" : "bg-red-500"}`} />
+                <span
+                  className={`h-1.5 w-1.5 rounded-full ${isOpen ? "bg-emerald-500" : "bg-red-500"}`}
+                />
                 {isOpen ? "Open Now" : "Currently Closed"}
               </span>
               {todayHours && (
@@ -334,7 +356,8 @@ export function JoinPage() {
         {isOpen === false && (
           <div className="mb-4 rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/30 px-4 py-3 text-center">
             <p className="text-sm text-amber-700 dark:text-amber-300">
-              This location is currently closed. You can still join the queue and will be served when it opens.
+              This location is currently closed. You can still join the queue
+              and will be served when it opens.
             </p>
           </div>
         )}
@@ -401,7 +424,9 @@ export function JoinPage() {
           {/* Queue type selection */}
           <Card>
             <CardHeader className="pb-3">
-              <CardTitle className="text-base">{t("kiosk.select_service")}</CardTitle>
+              <CardTitle className="text-base">
+                {t("kiosk.select_service")}
+              </CardTitle>
               <CardDescription className="text-xs">
                 Choose the service you need
               </CardDescription>
@@ -412,46 +437,101 @@ export function JoinPage() {
                   No services available at this location
                 </p>
               ) : (
-                services.map((svc) => (
-                  <button
-                    key={svc.id}
-                    type="button"
-                    onClick={() => setSelectedServiceId(svc.id)}
-                    className={`flex w-full items-center gap-3 rounded-lg border p-3 text-left transition-all ${selectedServiceId === svc.id
-                      ? "border-primary bg-primary/5 ring-1 ring-primary/30"
-                      : "border-border hover:border-primary/30 hover:bg-accent/30"
+                services.map((svc) => {
+                  const isExhausted = exhaustedServiceIds.includes(svc.id);
+                  const hasNoCounter = !queueTypes.some((qt) =>
+                    (qt.service_ids || []).includes(svc.id),
+                  );
+                  const isBlocked = isExhausted || hasNoCounter;
+                  return (
+                    <button
+                      key={svc.id}
+                      type="button"
+                      onClick={() => !isBlocked && setSelectedServiceId(svc.id)}
+                      disabled={isBlocked}
+                      className={`flex w-full items-center gap-3 rounded-lg border p-3 text-left transition-all ${
+                        isBlocked
+                          ? "border-border bg-muted/40 opacity-60 cursor-not-allowed"
+                          : selectedServiceId === svc.id
+                            ? "border-primary bg-primary/5 ring-1 ring-primary/30"
+                            : "border-border hover:border-primary/30 hover:bg-accent/30"
                       }`}
-                  >
-                    <div
-                      className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg font-semibold text-sm ${selectedServiceId === svc.id
-                        ? "bg-primary text-primary-foreground"
-                        : "bg-muted text-muted-foreground"
-                        }`}
                     >
-                      <Scissors className="h-5 w-5" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="font-medium text-sm text-foreground">
-                        {svc.name}
-                      </p>
-                      {svc.description && (
-                        <p className="text-xs text-muted-foreground truncate">
-                          {svc.description}
+                      <div
+                        className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg font-semibold text-sm ${
+                          isBlocked
+                            ? "bg-muted text-muted-foreground/50"
+                            : selectedServiceId === svc.id
+                              ? "bg-primary text-primary-foreground"
+                              : "bg-muted text-muted-foreground"
+                        }`}
+                      >
+                        <Scissors className="h-5 w-5" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium text-sm text-foreground">
+                          {svc.name}
                         </p>
+                        {svc.description && (
+                          <p className="text-xs text-muted-foreground truncate">
+                            {svc.description}
+                          </p>
+                        )}
+                      </div>
+                      {isExhausted ? (
+                        <Badge variant="secondary" className="shrink-0 text-xs">
+                          Full today
+                        </Badge>
+                      ) : hasNoCounter ? (
+                        <Badge
+                          variant="outline"
+                          className="shrink-0 text-xs text-muted-foreground"
+                        >
+                          Unavailable
+                        </Badge>
+                      ) : (
+                        <div className="flex items-center gap-1 text-xs text-muted-foreground shrink-0">
+                          <Clock className="h-3 w-3" />~{svc.avg_service_time}m
+                        </div>
                       )}
-                    </div>
-                    <div className="flex items-center gap-1 text-xs text-muted-foreground shrink-0">
-                      <Clock className="h-3 w-3" />
-                      ~{svc.avg_service_time}m
-                    </div>
-                    {selectedServiceId === svc.id && (
-                      <CheckCircle2 className="h-5 w-5 text-primary shrink-0" />
-                    )}
-                  </button>
-                ))
+                      {!isBlocked && selectedServiceId === svc.id && (
+                        <CheckCircle2 className="h-5 w-5 text-primary shrink-0" />
+                      )}
+                    </button>
+                  );
+                })
               )}
             </CardContent>
           </Card>
+
+          {/* Service blocked warning */}
+          {/* {selectedServiceId &&
+            (exhaustedServiceIds.includes(selectedServiceId) ||
+              !queueTypes.some((qt) =>
+                (qt.service_ids || []).includes(selectedServiceId),
+              )) && (
+              <div className="flex items-start gap-3 rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
+                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                <p>
+                  {exhaustedServiceIds.includes(selectedServiceId) ? (
+                    <>
+                      Sorry, the daily limit for{" "}
+                      <span className="font-semibold">
+                        {services.find((s) => s.id === selectedServiceId)?.name}
+                      </span>{" "}
+                      has been reached. No more slots are available today.
+                    </>
+                  ) : (
+                    <>
+                      <span className="font-semibold">
+                        {services.find((s) => s.id === selectedServiceId)?.name}
+                      </span>{" "}
+                      is not available at this location today.
+                    </>
+                  )}
+                </p>
+              </div>
+            )} */}
 
           {/* Customer details */}
           <Card>
@@ -503,7 +583,16 @@ export function JoinPage() {
           <Button
             type="submit"
             className="w-full h-12 text-base"
-            disabled={submitting || !selectedServiceId || !name.trim() || queuePaused}
+            disabled={
+              submitting ||
+              !selectedServiceId ||
+              !name.trim() ||
+              queuePaused ||
+              exhaustedServiceIds.includes(selectedServiceId) ||
+              !queueTypes.some((qt) =>
+                (qt.service_ids || []).includes(selectedServiceId),
+              )
+            }
           >
             {submitting ? (
               <Loader2 className="mr-2 h-5 w-5 animate-spin" />

@@ -20,7 +20,11 @@ import { useLocaleStore } from "../../stores/locale-store";
 import { useAuthStore } from "../../stores/auth-store";
 import { api } from "../../lib/api";
 import { useRealtime } from "../../lib/use-realtime";
-import { useNetworkStatus, cacheSet, cacheGet } from "../../lib/use-network-status";
+import {
+  useNetworkStatus,
+  cacheSet,
+  cacheGet,
+} from "../../lib/use-network-status";
 import { OfflineBanner } from "../../components/offline-banner";
 import { OfflineQueueDrawer } from "../../components/offline-queue-drawer";
 import { EmergencyControlsPanel } from "../../components/emergency-controls";
@@ -155,7 +159,10 @@ function canCallAndMark(_role: StaffRole): boolean {
   return true; // All roles can call/mark
 }
 
-const ROLE_BADGES: Record<string, { icon: typeof Shield; color: string; label: string }> = {
+const ROLE_BADGES: Record<
+  string,
+  { icon: typeof Shield; color: string; label: string }
+> = {
   owner: { icon: ShieldCheck, color: "text-amber-500", label: "Owner" },
   admin: { icon: ShieldAlert, color: "text-blue-500", label: "Admin" },
   staff: { icon: Shield, color: "text-muted-foreground", label: "Staff" },
@@ -178,6 +185,19 @@ export function QueuesPage() {
   const [nextEntries, setNextEntries] = useState<QueueEntry[]>([]);
   const [serving, setServing] = useState<QueueEntry[]>([]);
   const [completed, setCompleted] = useState<QueueEntry[]>([]);
+  const [exhaustedServiceIds, setExhaustedServiceIds] = useState<string[]>([]);
+  const [unavailableCounters, setUnavailableCounters] = useState<Set<string>>(
+    new Set(),
+  );
+
+  const toggleCounterAvailability = (queueTypeId: string) => {
+    setUnavailableCounters((prev) => {
+      const next = new Set(prev);
+      if (next.has(queueTypeId)) next.delete(queueTypeId);
+      else next.add(queueTypeId);
+      return next;
+    });
+  };
 
   const [services, setServices] = useState<Service[]>([]);
   const [selectedServiceId, setSelectedServiceId] = useState<string>("all");
@@ -199,37 +219,65 @@ export function QueuesPage() {
   const [walkInServiceId, setWalkInServiceId] = useState("");
   const [isSubmittingWalkIn, setIsSubmittingWalkIn] = useState(false);
 
+  // Derived: block walk-in if daily limit hit OR every compatible counter is unavailable
+  const isWalkInBlocked =
+    walkInServiceId !== "" &&
+    (() => {
+      if (exhaustedServiceIds.includes(walkInServiceId)) return true;
+      const compatible = queueTypes.filter((qt) =>
+        qt.service_ids?.includes(walkInServiceId),
+      );
+      // No counters assigned, or all assigned counters are unavailable
+      return (
+        compatible.length === 0 ||
+        compatible.every((qt) => unavailableCounters.has(qt.id))
+      );
+    })();
+
+  // Derived: true when every service is blocked (exhausted or no counter) — disables the Add Walk-In button
+  const allServicesBlocked =
+    services.length > 0 &&
+    services.every(
+      (svc) =>
+        exhaustedServiceIds.includes(svc.id) ||
+        !queueTypes.some((qt) => (qt.service_ids || []).includes(svc.id)),
+    );
+
   // ── Offline Queue Drawer ──
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [pendingCount, setPendingCount] = useState(() => getPendingCount());
 
   // ── Offline Resilience ──
   const CACHE_KEY = `staff-queue:${selectedLocation}`;
-  const { isOnline, isReconnecting, lastSyncedAt, markSynced } = useNetworkStatus({
-    onReconnect: async () => {
-      // Replay any queued mutations first, then refresh
-      if (accessToken) {
-        const pending = getPendingCount();
-        if (pending > 0) {
-          const result = await replay(accessToken);
-          if (result.succeeded > 0) {
-            toast.success(
-              t("offline.replaySuccess").replace("{succeeded}", String(result.succeeded))
-            );
-          }
-          if (result.failed > 0) {
-            toast.error(
-              t("offline.replayPartial")
-                .replace("{succeeded}", String(result.succeeded))
-                .replace("{total}", String(result.total))
-                .replace("{failed}", String(result.failed))
-            );
+  const { isOnline, isReconnecting, lastSyncedAt, markSynced } =
+    useNetworkStatus({
+      onReconnect: async () => {
+        // Replay any queued mutations first, then refresh
+        if (accessToken) {
+          const pending = getPendingCount();
+          if (pending > 0) {
+            const result = await replay(accessToken);
+            if (result.succeeded > 0) {
+              toast.success(
+                t("offline.replaySuccess").replace(
+                  "{succeeded}",
+                  String(result.succeeded),
+                ),
+              );
+            }
+            if (result.failed > 0) {
+              toast.error(
+                t("offline.replayPartial")
+                  .replace("{succeeded}", String(result.succeeded))
+                  .replace("{total}", String(result.total))
+                  .replace("{failed}", String(result.failed)),
+              );
+            }
           }
         }
-      }
-      fetchEntries();
-    },
-  });
+        fetchEntries();
+      },
+    });
 
   // Refresh pending count whenever drawer state or online state changes
   useEffect(() => {
@@ -239,7 +287,12 @@ export function QueuesPage() {
   // Cache entries whenever they update (and we're online)
   useEffect(() => {
     if (!selectedLocation || !isOnline) return;
-    if (waiting.length || nextEntries.length || serving.length || completed.length) {
+    if (
+      waiting.length ||
+      nextEntries.length ||
+      serving.length ||
+      completed.length
+    ) {
       cacheSet(CACHE_KEY, { waiting, next: nextEntries, serving, completed });
     }
   }, [waiting, nextEntries, serving, completed, selectedLocation, isOnline]);
@@ -247,7 +300,12 @@ export function QueuesPage() {
   // Restore from cache on initial load if offline
   useEffect(() => {
     if (!isOnline && selectedLocation && !waiting.length && !serving.length) {
-      const cached = cacheGet<{ waiting: QueueEntry[]; next: QueueEntry[]; serving: QueueEntry[]; completed: QueueEntry[] }>(CACHE_KEY);
+      const cached = cacheGet<{
+        waiting: QueueEntry[];
+        next: QueueEntry[];
+        serving: QueueEntry[];
+        completed: QueueEntry[];
+      }>(CACHE_KEY);
       if (cached?.data) {
         setWaiting(cached.data.waiting || []);
         setNextEntries(cached.data.next || []);
@@ -272,7 +330,7 @@ export function QueuesPage() {
     (async () => {
       const { data } = await api<{ locations: any[] }>(
         `/business/${businessId}/locations`,
-        { accessToken }
+        { accessToken },
       );
       if (data?.locations?.length) {
         setLocations(data.locations);
@@ -290,20 +348,19 @@ export function QueuesPage() {
   useEffect(() => {
     if (!selectedLocation || !accessToken) return;
     (async () => {
-      const [{ data: qtData }, { data: staffData }, { data: svcData }] = await Promise.all([
-        api<{ queueTypes: QueueTypeInfo[] }>(
-          `/queue/types/${selectedLocation}`,
-          { accessToken }
-        ),
-        api<{ staff: StaffMember[] }>(
-          `/business/${businessId}/staff`,
-          { accessToken }
-        ),
-        api<{ services: Service[] }>(
-          `/settings/services/${businessId}`,
-          { accessToken }
-        ),
-      ]);
+      const [{ data: qtData }, { data: staffData }, { data: svcData }] =
+        await Promise.all([
+          api<{ queueTypes: QueueTypeInfo[] }>(
+            `/queue/types/${selectedLocation}`,
+            { accessToken },
+          ),
+          api<{ staff: StaffMember[] }>(`/business/${businessId}/staff`, {
+            accessToken,
+          }),
+          api<{ services: Service[] }>(`/settings/services/${businessId}`, {
+            accessToken,
+          }),
+        ]);
       if (qtData?.queueTypes) setQueueTypes(qtData.queueTypes);
       if (staffData?.staff) setStaffList(staffData.staff);
       if (svcData?.services) setServices(svcData.services);
@@ -329,6 +386,7 @@ export function QueuesPage() {
       setNextEntries(data.next || []);
       setServing(data.serving || []);
       setCompleted(data.completed || []);
+      setExhaustedServiceIds((data as any).exhaustedServiceIds || []);
       setError("");
       markSynced();
     }
@@ -371,7 +429,7 @@ export function QueuesPage() {
           locationId: selectedLocation,
           businessId: location?.business_id || businessId,
         },
-      }
+      },
     );
 
     if (!sessionData?.session?.id) {
@@ -395,11 +453,19 @@ export function QueuesPage() {
       setWaiting((prev) => prev.filter((e) => e.id !== data.entry!.id));
       // callNext now returns status "next", move previous NEXT back to waiting
       setNextEntries((prev) => {
-        const demoted = prev.filter((e) => e.queue_type_id === data.entry!.queue_type_id);
+        const demoted = prev.filter(
+          (e) => e.queue_type_id === data.entry!.queue_type_id,
+        );
         if (demoted.length > 0) {
-          setWaiting((w) => [...demoted.map((e) => ({ ...e, status: "waiting" })), ...w]);
+          setWaiting((w) => [
+            ...demoted.map((e) => ({ ...e, status: "waiting" })),
+            ...w,
+          ]);
         }
-        return [data.entry!, ...prev.filter((e) => e.queue_type_id !== data.entry!.queue_type_id)];
+        return [
+          data.entry!,
+          ...prev.filter((e) => e.queue_type_id !== data.entry!.queue_type_id),
+        ];
       });
       setSuccessMsg(`Called ${data.entry.ticket_number}`);
     } else {
@@ -533,16 +599,19 @@ export function QueuesPage() {
   };
 
   const handleReassign = async (newStaffId: string) => {
-    if (!accessToken || !reassignEntry || !canReassign(myRole) || !guardOnline("reassign")) return;
+    if (
+      !accessToken ||
+      !reassignEntry ||
+      !canReassign(myRole) ||
+      !guardOnline("reassign")
+    )
+      return;
     setActionLoading(`reassign-${reassignEntry.id}`);
-    const { error: apiErr } = await api(
-      `/queue/reassign/${reassignEntry.id}`,
-      {
-        method: "POST",
-        accessToken,
-        body: { newStaffAuthUid: newStaffId },
-      }
-    );
+    const { error: apiErr } = await api(`/queue/reassign/${reassignEntry.id}`, {
+      method: "POST",
+      accessToken,
+      body: { newStaffAuthUid: newStaffId },
+    });
     if (apiErr) setError(apiErr);
     else {
       setSuccessMsg(`Reassigned ${reassignEntry.ticket_number}`);
@@ -577,7 +646,7 @@ export function QueuesPage() {
           locationId: selectedLocation,
           businessId: location?.business_id || businessId,
         },
-      }
+      },
     );
 
     if (!sessionData?.session?.id) {
@@ -628,11 +697,111 @@ export function QueuesPage() {
     return staffList.find((s) => s.auth_user_id === authUid)?.name || null;
   };
 
-  // ── Loading ──
+  // ── Loading — skeleton ──
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-20">
-        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+      <div className="space-y-4 animate-fade-in">
+        {/* Header */}
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="space-y-2">
+            <div className="h-8 w-40 rounded-lg bg-muted animate-pulse" />
+            <div className="h-4 w-56 rounded bg-muted animate-pulse" />
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="h-6 w-20 rounded-full bg-muted animate-pulse" />
+            <div className="h-2 w-2 rounded-full bg-muted animate-pulse" />
+          </div>
+        </div>
+
+        {/* Controls bar */}
+        <Card>
+          <CardContent className="flex flex-wrap items-center gap-2 p-3">
+            <div className="h-9 w-44 rounded-md bg-muted animate-pulse" />
+            <div className="h-9 w-40 rounded-md bg-muted animate-pulse" />
+            <div className="flex-1" />
+            <div className="h-8 w-32 rounded-md bg-muted animate-pulse" />
+            <div className="h-8 w-28 rounded-md bg-muted animate-pulse" />
+          </CardContent>
+        </Card>
+
+        {/* Service filter chips */}
+        <div className="space-y-3">
+          <div className="h-5 w-28 rounded bg-muted animate-pulse" />
+          <div className="flex gap-2">
+            {[110, 88, 96, 80].map((w, i) => (
+              <div
+                key={i}
+                className="h-8 rounded-full bg-muted animate-pulse"
+                style={{ width: w }}
+              />
+            ))}
+          </div>
+        </div>
+
+        {/* Counter cards */}
+        <div className="space-y-3">
+          <div className="h-5 w-36 rounded bg-muted animate-pulse" />
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {[0, 1, 2].map((i) => (
+              <Card key={i} className="overflow-hidden border-2 border-muted">
+                <CardContent className="p-4 space-y-4">
+                  <div className="flex items-start justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="h-10 w-10 rounded-lg bg-muted animate-pulse" />
+                      <div className="space-y-1.5">
+                        <div className="h-4 w-24 rounded bg-muted animate-pulse" />
+                        <div className="h-3 w-36 rounded bg-muted animate-pulse" />
+                      </div>
+                    </div>
+                    <div className="h-5 w-16 rounded-full bg-muted animate-pulse" />
+                  </div>
+                  <div className="h-20 rounded-xl bg-muted/50 animate-pulse" />
+                  <div className="h-11 rounded-lg bg-muted animate-pulse" />
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </div>
+
+        {/* Waiting queue */}
+        <div className="space-y-3">
+          <div className="flex items-center gap-2">
+            <div className="h-5 w-32 rounded bg-muted animate-pulse" />
+            <div className="h-5 w-5 rounded-full bg-muted animate-pulse" />
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {[0, 1, 2].map((i) => (
+              <Card key={i} className="overflow-hidden">
+                <CardContent className="p-4 space-y-4">
+                  <div className="flex items-start justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="h-12 w-12 rounded-lg bg-muted animate-pulse" />
+                      <div className="space-y-2">
+                        <div className="h-4 w-28 rounded bg-muted animate-pulse" />
+                        <div className="h-4 w-14 rounded-full bg-muted animate-pulse" />
+                      </div>
+                    </div>
+                    <div className="h-5 w-5 rounded-full bg-muted animate-pulse" />
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-1.5">
+                      <div className="h-2 w-16 rounded bg-muted animate-pulse" />
+                      <div className="h-4 w-20 rounded bg-muted animate-pulse" />
+                    </div>
+                    <div className="space-y-1.5">
+                      <div className="h-2 w-16 rounded bg-muted animate-pulse" />
+                      <div className="h-4 w-20 rounded bg-muted animate-pulse" />
+                    </div>
+                  </div>
+                  <div className="space-y-1.5 pt-2 border-t border-dashed border-border/60">
+                    <div className="h-2 w-20 rounded bg-muted animate-pulse" />
+                    <div className="h-4 w-32 rounded bg-muted animate-pulse" />
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </div>
       </div>
     );
   }
@@ -644,12 +813,19 @@ export function QueuesPage() {
     <TooltipProvider delayDuration={300}>
       <div className="space-y-4 animate-fade-in">
         {/* ── Offline Banner ── */}
-        <OfflineBanner isOnline={isOnline} isReconnecting={isReconnecting} lastSyncedAt={lastSyncedAt} pendingCount={pendingCount} />
+        <OfflineBanner
+          isOnline={isOnline}
+          isReconnecting={isReconnecting}
+          lastSyncedAt={lastSyncedAt}
+          pendingCount={pendingCount}
+        />
 
         {/* ── Header ── */}
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h1 className="text-2xl font-bold tracking-tight">{t("nav.queues")}</h1>
+            <h1 className="text-2xl font-bold tracking-tight">
+              {t("nav.queues")}
+            </h1>
             <p className="text-muted-foreground text-sm">
               Manage queues in real-time
             </p>
@@ -744,7 +920,7 @@ export function QueuesPage() {
               variant="default"
               size="sm"
               onClick={() => setIsWalkInOpen(true)}
-              disabled={!selectedLocation}
+              disabled={!selectedLocation || allServicesBlocked}
               className="gap-1.5 bg-primary hover:bg-primary/90"
             >
               <UserPlus className="h-3.5 w-3.5" />
@@ -778,7 +954,9 @@ export function QueuesPage() {
         {successMsg && (
           <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-4 py-2.5 flex items-center gap-2">
             <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
-            <p className="text-emerald-700 dark:text-emerald-400 text-sm">{successMsg}</p>
+            <p className="text-emerald-700 dark:text-emerald-400 text-sm">
+              {successMsg}
+            </p>
           </div>
         )}
 
@@ -790,7 +968,9 @@ export function QueuesPage() {
             </div>
             <div>
               <h2 className="text-sm font-semibold">Service Filter</h2>
-              <p className="text-[0.7rem] text-muted-foreground">View queue by service type</p>
+              <p className="text-[0.7rem] text-muted-foreground">
+                View queue by service type
+              </p>
             </div>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -801,7 +981,10 @@ export function QueuesPage() {
               className="rounded-full h-8 px-4"
             >
               All Services
-              <Badge variant="secondary" className="ml-2 h-4 min-w-4 p-0 text-[10px] flex items-center justify-center bg-white/20 text-white">
+              <Badge
+                variant="secondary"
+                className="ml-2 h-4 min-w-4 p-0 text-[10px] flex items-center justify-center bg-white/20 text-white"
+              >
                 {waiting.length}
               </Badge>
             </Button>
@@ -814,7 +997,10 @@ export function QueuesPage() {
                 className="rounded-full h-8 px-4"
               >
                 {svc.name}
-                <Badge variant="secondary" className="ml-2 h-4 min-w-4 p-0 text-[10px] bg-muted/20">
+                <Badge
+                  variant="secondary"
+                  className="ml-2 h-4 min-w-4 p-0 text-[10px] bg-muted/20"
+                >
                   {getWaitingCountForService(svc.id)}
                 </Badge>
               </Button>
@@ -829,29 +1015,40 @@ export function QueuesPage() {
               <Users className="h-4 w-4 text-primary" />
             </div>
             <h2 className="text-sm font-semibold">Service Counters</h2>
-            <Badge variant="secondary" className="text-[0.65rem]">{queueTypes.length} active</Badge>
+            {/* <Badge variant="secondary" className="text-[0.65rem]">
+              {queueTypes.length} active
+            </Badge> */}
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {(selectedQueueType === "all"
               ? queueTypes
-              : queueTypes.filter(qt => qt.id === selectedQueueType)
-            ).filter(qt => {
-              if (selectedServiceId === "all") return true;
-              return qt.service_ids?.includes(selectedServiceId);
-            }).map((qt, idx) => (
-              <CounterCard
-                key={qt.id}
-                qt={qt}
-                number={idx + 1}
-                servingEntries={serving.filter(e => e.queue_type_id === qt.id)}
-                nextEntries={nextEntries.filter(e => e.queue_type_id === qt.id)}
-                allServices={services}
-                actionLoading={actionLoading}
-                onCallNext={() => handleCallNext(qt.id)}
-                onMarkServed={(id) => handleMarkServed(id)}
-              />
-            ))}
+              : queueTypes.filter((qt) => qt.id === selectedQueueType)
+            )
+              .filter((qt) => {
+                if (selectedServiceId === "all") return true;
+                return qt.service_ids?.includes(selectedServiceId);
+              })
+              .map((qt, idx) => (
+                <CounterCard
+                  key={qt.id}
+                  qt={qt}
+                  number={idx + 1}
+                  servingEntries={serving.filter(
+                    (e) => e.queue_type_id === qt.id,
+                  )}
+                  nextEntries={nextEntries.filter(
+                    (e) => e.queue_type_id === qt.id,
+                  )}
+                  allServices={services}
+                  actionLoading={actionLoading}
+                  onCallNext={() => handleCallNext(qt.id)}
+                  onMarkServed={(id) => handleMarkServed(id)}
+                  exhaustedServiceIds={exhaustedServiceIds}
+                  isUnavailable={unavailableCounters.has(qt.id)}
+                  onToggleAvailability={() => toggleCounterAvailability(qt.id)}
+                />
+              ))}
           </div>
         </section>
 
@@ -860,7 +1057,10 @@ export function QueuesPage() {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <h2 className="text-sm font-semibold">Waiting Queue</h2>
-              <Badge variant="secondary" className="bg-primary text-primary-foreground h-5 w-5 p-0 flex items-center justify-center rounded-full text-[10px]">
+              <Badge
+                variant="secondary"
+                className="bg-primary text-primary-foreground h-5 w-5 p-0 flex items-center justify-center rounded-full text-[10px]"
+              >
                 {filterByType(waiting).length}
               </Badge>
             </div>
@@ -898,13 +1098,15 @@ export function QueuesPage() {
               <EmptyState message="No completed entries yet" />
             ) : (
               <div className="space-y-1.5">
-                {filterByType(completed).slice(0, 10).map((entry) => (
-                  <EntryCard
-                    key={entry.id}
-                    entry={entry}
-                    staffName={getStaffName(entry.served_by)}
-                  />
-                ))}
+                {filterByType(completed)
+                  .slice(0, 10)
+                  .map((entry) => (
+                    <EntryCard
+                      key={entry.id}
+                      entry={entry}
+                      staffName={getStaffName(entry.served_by)}
+                    />
+                  ))}
               </div>
             )}
           </TabsContent>
@@ -934,7 +1136,9 @@ export function QueuesPage() {
 
                 setIsSubmittingWalkIn(true);
                 try {
-                  const location = locations.find((l) => l.id === selectedLocation);
+                  const location = locations.find(
+                    (l) => l.id === selectedLocation,
+                  );
                   const { error: apiErr } = await api("/public/queue/join", {
                     method: "POST",
                     body: {
@@ -980,7 +1184,9 @@ export function QueuesPage() {
               </div>
 
               <div className="space-y-2">
-                <label className="text-sm font-medium">Phone Number (Optional)</label>
+                <label className="text-sm font-medium">
+                  Phone Number (Optional)
+                </label>
                 <div className="relative">
                   <Phone className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground/40" />
                   <input
@@ -995,7 +1201,10 @@ export function QueuesPage() {
 
               <div className="space-y-2">
                 <label className="text-sm font-medium">Select Service</label>
-                <Select value={walkInServiceId} onValueChange={setWalkInServiceId}>
+                <Select
+                  value={walkInServiceId}
+                  onValueChange={setWalkInServiceId}
+                >
                   <SelectTrigger className="w-full">
                     <Scissors className="h-3.5 w-3.5 mr-2 text-muted-foreground" />
                     <SelectValue placeholder="Select a service" />
@@ -1018,7 +1227,10 @@ export function QueuesPage() {
                 >
                   Cancel
                 </Button>
-                <Button type="submit" disabled={isSubmittingWalkIn}>
+                <Button
+                  type="submit"
+                  disabled={isSubmittingWalkIn || isWalkInBlocked}
+                >
                   {isSubmittingWalkIn ? (
                     <Loader2 className="h-4 w-4 animate-spin" />
                   ) : (
@@ -1047,16 +1259,15 @@ export function QueuesPage() {
             </DialogHeader>
             <div className="space-y-2 max-h-64 overflow-y-auto">
               {staffList
-                .filter((s) =>
-                  s.locations.includes(selectedLocation)
-                )
+                .filter((s) => s.locations.includes(selectedLocation))
                 .map((s) => (
                   <button
                     key={s.auth_user_id}
-                    className={`flex w-full items-center gap-3 rounded-lg border p-3 text-left transition-colors hover:bg-accent/50 ${reassignEntry?.served_by === s.auth_user_id
-                      ? "border-primary bg-primary/5"
-                      : "border-border"
-                      }`}
+                    className={`flex w-full items-center gap-3 rounded-lg border p-3 text-left transition-colors hover:bg-accent/50 ${
+                      reassignEntry?.served_by === s.auth_user_id
+                        ? "border-primary bg-primary/5"
+                        : "border-border"
+                    }`}
                     onClick={() => handleReassign(s.auth_user_id)}
                     disabled={
                       !!actionLoading ||
@@ -1074,11 +1285,17 @@ export function QueuesPage() {
                         {s.email}
                       </p>
                     </div>
-                    <Badge variant="outline" className="text-[0.6rem] capitalize shrink-0">
+                    <Badge
+                      variant="outline"
+                      className="text-[0.6rem] capitalize shrink-0"
+                    >
                       {s.role}
                     </Badge>
                     {reassignEntry?.served_by === s.auth_user_id && (
-                      <Badge variant="default" className="text-[0.6rem] shrink-0">
+                      <Badge
+                        variant="default"
+                        className="text-[0.6rem] shrink-0"
+                      >
                         Current
                       </Badge>
                     )}
@@ -1086,10 +1303,10 @@ export function QueuesPage() {
                 ))}
               {staffList.filter((s) => s.locations.includes(selectedLocation))
                 .length === 0 && (
-                  <p className="text-sm text-muted-foreground text-center py-4">
-                    No staff assigned to this location
-                  </p>
-                )}
+                <p className="text-sm text-muted-foreground text-center py-4">
+                  No staff assigned to this location
+                </p>
+              )}
             </div>
           </DialogContent>
         </Dialog>
@@ -1129,14 +1346,30 @@ function EntryCard({
 }) {
   const statusStyles: Record<
     string,
-    { variant: "default" | "secondary" | "destructive" | "outline"; label: string; dotColor: string }
+    {
+      variant: "default" | "secondary" | "destructive" | "outline";
+      label: string;
+      dotColor: string;
+    }
   > = {
     waiting: { variant: "outline", label: "Waiting", dotColor: "bg-blue-500" },
     next: { variant: "default", label: "Called", dotColor: "bg-amber-500" },
-    serving: { variant: "default", label: "Serving", dotColor: "bg-emerald-500" },
+    serving: {
+      variant: "default",
+      label: "Serving",
+      dotColor: "bg-emerald-500",
+    },
     served: { variant: "secondary", label: "Served", dotColor: "bg-gray-400" },
-    no_show: { variant: "destructive", label: "No Show", dotColor: "bg-red-500" },
-    cancelled: { variant: "secondary", label: "Cancelled", dotColor: "bg-amber-500" },
+    no_show: {
+      variant: "destructive",
+      label: "No Show",
+      dotColor: "bg-red-500",
+    },
+    cancelled: {
+      variant: "secondary",
+      label: "Cancelled",
+      dotColor: "bg-amber-500",
+    },
   };
   const style = statusStyles[entry.status] || statusStyles.waiting;
 
@@ -1159,11 +1392,17 @@ function EntryCard({
             <span className="font-medium text-sm text-foreground truncate">
               {entry.customer_name || "Walk-in"}
             </span>
-            <Badge variant={style.variant} className="text-[0.6rem] h-[18px] px-1.5">
+            <Badge
+              variant={style.variant}
+              className="text-[0.6rem] h-[18px] px-1.5"
+            >
               {style.label}
             </Badge>
             {entry.service_name && (
-              <Badge variant="secondary" className="text-[0.6rem] h-[18px] px-1.5 bg-primary/5 text-primary border-primary/10">
+              <Badge
+                variant="secondary"
+                className="text-[0.6rem] h-[18px] px-1.5 bg-primary/5 text-primary border-primary/10"
+              >
                 {entry.service_name}
               </Badge>
             )}
@@ -1214,6 +1453,9 @@ function CounterCard({
   actionLoading,
   onCallNext,
   onMarkServed,
+  exhaustedServiceIds,
+  isUnavailable,
+  onToggleAvailability,
 }: {
   qt: QueueTypeInfo;
   number: number;
@@ -1223,12 +1465,21 @@ function CounterCard({
   actionLoading: string | null;
   onCallNext: () => void;
   onMarkServed: (id: string) => void;
+  exhaustedServiceIds: string[];
+  isUnavailable: boolean;
+  onToggleAvailability: () => void;
 }) {
+  const counterServiceIds = qt.service_ids || [];
+  const allServicesExhausted =
+    counterServiceIds.length > 0 &&
+    counterServiceIds.every((id) => exhaustedServiceIds.includes(id));
   const isServing = servingEntries.length > 0 || nextEntries.length > 0;
   const currentEntry = servingEntries[0] || nextEntries[0];
 
   // Get service names for this counter
-  const counterServices = allServices.filter((s) => qt.service_ids?.includes(s.id));
+  const counterServices = allServices.filter((s) =>
+    qt.service_ids?.includes(s.id),
+  );
   const serviceText =
     counterServices.length === 0
       ? "All services"
@@ -1239,7 +1490,15 @@ function CounterCard({
           : `${counterServices[0].name}, ${counterServices[1].name} +${counterServices.length - 2}`;
 
   return (
-    <Card className={`overflow-hidden transition-all duration-300 border-2 ${isServing ? "border-amber-200 shadow-amber-100" : "border-emerald-200 shadow-emerald-100"} hover:shadow-md`}>
+    <Card
+      className={`overflow-hidden transition-all duration-300 border-2 ${
+        isUnavailable
+          ? "border-gray-200 shadow-gray-100 opacity-75"
+          : isServing
+            ? "border-amber-200 shadow-amber-100"
+            : "border-emerald-200 shadow-emerald-100"
+      } hover:shadow-md`}
+    >
       <CardContent className="p-0">
         <div className="p-4 space-y-4">
           <div className="flex items-start justify-between">
@@ -1258,19 +1517,39 @@ function CounterCard({
                   {counterServices.length > 2 && (
                     <TooltipContent>
                       <ul className="text-xs space-y-1">
-                        {counterServices.map(s => <li key={s.id}>{s.name}</li>)}
+                        {counterServices.map((s) => (
+                          <li key={s.id}>{s.name}</li>
+                        ))}
                       </ul>
                     </TooltipContent>
                   )}
                 </Tooltip>
               </div>
             </div>
-            <Badge
-              variant={isServing ? "default" : "outline"}
-              className={`text-[0.65rem] ${isServing ? "bg-amber-500 hover:bg-amber-600" : "text-emerald-600 border-emerald-200 bg-emerald-50"}`}
-            >
-              {isServing ? "Serving" : "Available"}
-            </Badge>
+            <div className="flex items-center gap-1.5">
+              <Badge
+                variant={
+                  isUnavailable
+                    ? "secondary"
+                    : isServing
+                      ? "default"
+                      : "outline"
+                }
+                className={`text-[0.65rem] ${
+                  isUnavailable || allServicesExhausted
+                    ? "text-gray-500 border-gray-200 bg-gray-100"
+                    : isServing
+                      ? "bg-amber-500 hover:bg-amber-600"
+                      : "text-emerald-600 border-emerald-200 bg-emerald-50"
+                }`}
+              >
+                {isUnavailable || allServicesExhausted
+                  ? "Unavailable"
+                  : isServing
+                    ? "Serving"
+                    : "Available"}
+              </Badge>
+            </div>
           </div>
 
           <div className="min-h-[80px] flex flex-col justify-center">
@@ -1278,8 +1557,12 @@ function CounterCard({
               <div className="bg-amber-50 rounded-xl p-3 border border-amber-100 flex items-center justify-between">
                 <div>
                   <div className="flex items-center gap-2">
-                    <span className="text-lg font-bold text-amber-900">#{currentEntry.ticket_number}</span>
-                    <span className="text-sm font-medium text-amber-800">{currentEntry.customer_name || "Guest"}</span>
+                    {/* <span className="text-lg font-bold text-amber-900">
+                      #{currentEntry.ticket_number}
+                    </span> */}
+                    <span className="text-sm font-medium text-amber-800">
+                      {currentEntry.customer_name || "Guest"}
+                    </span>
                   </div>
                   {currentEntry.service_name && (
                     <p className="text-[0.65rem] text-amber-700 font-medium uppercase tracking-wider mt-0.5">
@@ -1292,12 +1575,14 @@ function CounterCard({
             ) : (
               <div className="flex flex-col items-center justify-center py-2 text-muted-foreground/40">
                 <Clock className="h-6 w-6 mb-1" />
-                <p className="text-[0.65rem] font-medium">No customers waiting</p>
+                <p className="text-[0.65rem] font-medium">
+                  No customers waiting
+                </p>
               </div>
             )}
           </div>
 
-          {isServing ? (
+          {isServing && !isUnavailable ? (
             <div className="flex gap-2">
               <Button
                 className="flex-1 bg-emerald-600 hover:bg-emerald-700 h-10 gap-2 font-bold"
@@ -1311,9 +1596,21 @@ function CounterCard({
                 )}
                 Served
               </Button>
-              <Button variant="outline" size="icon" className="h-10 w-10 shrink-0">
-                <MoreHorizontal className="h-4 w-4" />
-              </Button>
+            </div>
+          ) : isUnavailable ? (
+            <Button
+              className="w-full h-11 gap-2 text-base font-bold"
+              variant="outline"
+              disabled
+            >
+              <X className="h-5 w-5" />
+              Unavailable
+            </Button>
+          ) : allServicesExhausted ? (
+            <div className="w-full rounded-lg border border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-950/30 px-4 py-3 text-center space-y-1">
+              <p className="text-sm font-semibold text-red-600 dark:text-red-400">
+                Daily Service Limit Reached
+              </p>
             </div>
           ) : (
             <Button
@@ -1353,12 +1650,21 @@ function WaitingEntryCard({
           <div className="flex items-start justify-between">
             <div className="flex items-center gap-3">
               <div className="flex flex-col items-center justify-center h-12 w-12 rounded-lg bg-muted/50 border border-muted-foreground/10">
-                <span className="text-[0.6rem] font-bold text-muted-foreground/60 uppercase">Pos</span>
-                <span className="text-base font-black text-primary -mt-1">#{position}</span>
+                <span className="text-[0.6rem] font-bold text-muted-foreground/60 uppercase">
+                  Pos
+                </span>
+                <span className="text-base font-black text-primary -mt-1">
+                  #{position}
+                </span>
               </div>
               <div className="min-w-0">
-                <h3 className="font-bold text-base text-foreground truncate">{entry.customer_name || "Guest"}</h3>
-                <Badge variant="secondary" className="text-[0.6rem] h-4 bg-blue-50 text-blue-600 border-none px-1.5 font-bold uppercase tracking-tighter">
+                <h3 className="font-bold text-base text-foreground truncate">
+                  {entry.customer_name || "Guest"}
+                </h3>
+                <Badge
+                  variant="secondary"
+                  className="text-[0.6rem] h-4 bg-blue-50 text-blue-600 border-none px-1.5 font-bold uppercase tracking-tighter"
+                >
                   Waiting
                 </Badge>
               </div>
@@ -1377,7 +1683,9 @@ function WaitingEntryCard({
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent side="top">
-                  <p className="text-[10px] font-bold uppercase tracking-widest">No-Show</p>
+                  <p className="text-[10px] font-bold uppercase tracking-widest">
+                    No-Show
+                  </p>
                 </TooltipContent>
               </Tooltip>
             </TooltipProvider>
@@ -1385,10 +1693,16 @@ function WaitingEntryCard({
 
           <div className="grid grid-cols-2 gap-4 py-1">
             <div className="space-y-1">
-              <p className="text-[0.6rem] font-bold text-muted-foreground/60 uppercase tracking-widest">Service Name</p>
+              <p className="text-[0.6rem] font-bold text-muted-foreground/60 uppercase tracking-widest">
+                Service Name
+              </p>
               <div className="flex items-center gap-1.5 text-xs font-semibold text-foreground/80">
                 {/* <Phone className="h-3 w-3 text-muted-foreground/40" /> */}
-                {entry.service_name ? entry.service_name : <span className="text-muted-foreground/30">—</span>}
+                {entry.service_name ? (
+                  entry.service_name
+                ) : (
+                  <span className="text-muted-foreground/30">—</span>
+                )}
               </div>
             </div>
             {/* <div className="space-y-1">
@@ -1401,10 +1715,13 @@ function WaitingEntryCard({
           </div>
 
           <div className="pt-2 border-t border-dashed border-border/60">
-            <p className="text-[0.6rem] font-bold text-muted-foreground/60 uppercase tracking-widest mb-1">Elapsed Time</p>
+            <p className="text-[0.6rem] font-bold text-muted-foreground/60 uppercase tracking-widest mb-1">
+              Elapsed Time
+            </p>
             <div className="flex items-center gap-1.5 text-xs font-bold text-primary">
               <Clock className="h-3.5 w-3.5" />
-              Wait time: <span className="font-black">
+              Wait time:{" "}
+              <span className="font-black">
                 {entry.estimatedMinutes !== undefined
                   ? entry.estimatedMinutes < 1
                     ? "Next"
