@@ -185,6 +185,19 @@ export function QueuesPage() {
   const [nextEntries, setNextEntries] = useState<QueueEntry[]>([]);
   const [serving, setServing] = useState<QueueEntry[]>([]);
   const [completed, setCompleted] = useState<QueueEntry[]>([]);
+  const [exhaustedServiceIds, setExhaustedServiceIds] = useState<string[]>([]);
+  const [unavailableCounters, setUnavailableCounters] = useState<Set<string>>(
+    new Set(),
+  );
+
+  const toggleCounterAvailability = (queueTypeId: string) => {
+    setUnavailableCounters((prev) => {
+      const next = new Set(prev);
+      if (next.has(queueTypeId)) next.delete(queueTypeId);
+      else next.add(queueTypeId);
+      return next;
+    });
+  };
 
   const [services, setServices] = useState<Service[]>([]);
   const [selectedServiceId, setSelectedServiceId] = useState<string>("all");
@@ -349,6 +362,7 @@ export function QueuesPage() {
       setNextEntries(data.next || []);
       setServing(data.serving || []);
       setCompleted(data.completed || []);
+      setExhaustedServiceIds((data as any).exhaustedServiceIds || []);
       setError("");
       markSynced();
     }
@@ -659,11 +673,111 @@ export function QueuesPage() {
     return staffList.find((s) => s.auth_user_id === authUid)?.name || null;
   };
 
-  // ── Loading ──
+  // ── Loading — skeleton ──
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-20">
-        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+      <div className="space-y-4 animate-fade-in">
+        {/* Header */}
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="space-y-2">
+            <div className="h-8 w-40 rounded-lg bg-muted animate-pulse" />
+            <div className="h-4 w-56 rounded bg-muted animate-pulse" />
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="h-6 w-20 rounded-full bg-muted animate-pulse" />
+            <div className="h-2 w-2 rounded-full bg-muted animate-pulse" />
+          </div>
+        </div>
+
+        {/* Controls bar */}
+        <Card>
+          <CardContent className="flex flex-wrap items-center gap-2 p-3">
+            <div className="h-9 w-44 rounded-md bg-muted animate-pulse" />
+            <div className="h-9 w-40 rounded-md bg-muted animate-pulse" />
+            <div className="flex-1" />
+            <div className="h-8 w-32 rounded-md bg-muted animate-pulse" />
+            <div className="h-8 w-28 rounded-md bg-muted animate-pulse" />
+          </CardContent>
+        </Card>
+
+        {/* Service filter chips */}
+        <div className="space-y-3">
+          <div className="h-5 w-28 rounded bg-muted animate-pulse" />
+          <div className="flex gap-2">
+            {[110, 88, 96, 80].map((w, i) => (
+              <div
+                key={i}
+                className="h-8 rounded-full bg-muted animate-pulse"
+                style={{ width: w }}
+              />
+            ))}
+          </div>
+        </div>
+
+        {/* Counter cards */}
+        <div className="space-y-3">
+          <div className="h-5 w-36 rounded bg-muted animate-pulse" />
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {[0, 1, 2].map((i) => (
+              <Card key={i} className="overflow-hidden border-2 border-muted">
+                <CardContent className="p-4 space-y-4">
+                  <div className="flex items-start justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="h-10 w-10 rounded-lg bg-muted animate-pulse" />
+                      <div className="space-y-1.5">
+                        <div className="h-4 w-24 rounded bg-muted animate-pulse" />
+                        <div className="h-3 w-36 rounded bg-muted animate-pulse" />
+                      </div>
+                    </div>
+                    <div className="h-5 w-16 rounded-full bg-muted animate-pulse" />
+                  </div>
+                  <div className="h-20 rounded-xl bg-muted/50 animate-pulse" />
+                  <div className="h-11 rounded-lg bg-muted animate-pulse" />
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </div>
+
+        {/* Waiting queue */}
+        <div className="space-y-3">
+          <div className="flex items-center gap-2">
+            <div className="h-5 w-32 rounded bg-muted animate-pulse" />
+            <div className="h-5 w-5 rounded-full bg-muted animate-pulse" />
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {[0, 1, 2].map((i) => (
+              <Card key={i} className="overflow-hidden">
+                <CardContent className="p-4 space-y-4">
+                  <div className="flex items-start justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="h-12 w-12 rounded-lg bg-muted animate-pulse" />
+                      <div className="space-y-2">
+                        <div className="h-4 w-28 rounded bg-muted animate-pulse" />
+                        <div className="h-4 w-14 rounded-full bg-muted animate-pulse" />
+                      </div>
+                    </div>
+                    <div className="h-5 w-5 rounded-full bg-muted animate-pulse" />
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-1.5">
+                      <div className="h-2 w-16 rounded bg-muted animate-pulse" />
+                      <div className="h-4 w-20 rounded bg-muted animate-pulse" />
+                    </div>
+                    <div className="space-y-1.5">
+                      <div className="h-2 w-16 rounded bg-muted animate-pulse" />
+                      <div className="h-4 w-20 rounded bg-muted animate-pulse" />
+                    </div>
+                  </div>
+                  <div className="space-y-1.5 pt-2 border-t border-dashed border-border/60">
+                    <div className="h-2 w-20 rounded bg-muted animate-pulse" />
+                    <div className="h-4 w-32 rounded bg-muted animate-pulse" />
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </div>
       </div>
     );
   }
@@ -877,9 +991,9 @@ export function QueuesPage() {
               <Users className="h-4 w-4 text-primary" />
             </div>
             <h2 className="text-sm font-semibold">Service Counters</h2>
-            <Badge variant="secondary" className="text-[0.65rem]">
+            {/* <Badge variant="secondary" className="text-[0.65rem]">
               {queueTypes.length} active
-            </Badge>
+            </Badge> */}
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -906,6 +1020,9 @@ export function QueuesPage() {
                   actionLoading={actionLoading}
                   onCallNext={() => handleCallNext(qt.id)}
                   onMarkServed={(id) => handleMarkServed(id)}
+                  exhaustedServiceIds={exhaustedServiceIds}
+                  isUnavailable={unavailableCounters.has(qt.id)}
+                  onToggleAvailability={() => toggleCounterAvailability(qt.id)}
                 />
               ))}
           </div>
@@ -1309,6 +1426,9 @@ function CounterCard({
   actionLoading,
   onCallNext,
   onMarkServed,
+  exhaustedServiceIds,
+  isUnavailable,
+  onToggleAvailability,
 }: {
   qt: QueueTypeInfo;
   number: number;
@@ -1318,7 +1438,14 @@ function CounterCard({
   actionLoading: string | null;
   onCallNext: () => void;
   onMarkServed: (id: string) => void;
+  exhaustedServiceIds: string[];
+  isUnavailable: boolean;
+  onToggleAvailability: () => void;
 }) {
+  const counterServiceIds = qt.service_ids || [];
+  const allServicesExhausted =
+    counterServiceIds.length > 0 &&
+    counterServiceIds.every((id) => exhaustedServiceIds.includes(id));
   const isServing = servingEntries.length > 0 || nextEntries.length > 0;
   const currentEntry = servingEntries[0] || nextEntries[0];
 
@@ -1337,7 +1464,13 @@ function CounterCard({
 
   return (
     <Card
-      className={`overflow-hidden transition-all duration-300 border-2 ${isServing ? "border-amber-200 shadow-amber-100" : "border-emerald-200 shadow-emerald-100"} hover:shadow-md`}
+      className={`overflow-hidden transition-all duration-300 border-2 ${
+        isUnavailable
+          ? "border-gray-200 shadow-gray-100 opacity-75"
+          : isServing
+            ? "border-amber-200 shadow-amber-100"
+            : "border-emerald-200 shadow-emerald-100"
+      } hover:shadow-md`}
     >
       <CardContent className="p-0">
         <div className="p-4 space-y-4">
@@ -1366,12 +1499,30 @@ function CounterCard({
                 </Tooltip>
               </div>
             </div>
-            <Badge
-              variant={isServing ? "default" : "outline"}
-              className={`text-[0.65rem] ${isServing ? "bg-amber-500 hover:bg-amber-600" : "text-emerald-600 border-emerald-200 bg-emerald-50"}`}
-            >
-              {isServing ? "Serving" : "Available"}
-            </Badge>
+            <div className="flex items-center gap-1.5">
+              <Badge
+                variant={
+                  isUnavailable
+                    ? "secondary"
+                    : isServing
+                      ? "default"
+                      : "outline"
+                }
+                className={`text-[0.65rem] ${
+                  isUnavailable || allServicesExhausted
+                    ? "text-gray-500 border-gray-200 bg-gray-100"
+                    : isServing
+                      ? "bg-amber-500 hover:bg-amber-600"
+                      : "text-emerald-600 border-emerald-200 bg-emerald-50"
+                }`}
+              >
+                {isUnavailable || allServicesExhausted
+                  ? "Unavailable"
+                  : isServing
+                    ? "Serving"
+                    : "Available"}
+              </Badge>
+            </div>
           </div>
 
           <div className="min-h-[80px] flex flex-col justify-center">
@@ -1404,7 +1555,7 @@ function CounterCard({
             )}
           </div>
 
-          {isServing ? (
+          {isServing && !isUnavailable ? (
             <div className="flex gap-2">
               <Button
                 className="flex-1 bg-emerald-600 hover:bg-emerald-700 h-10 gap-2 font-bold"
@@ -1418,13 +1569,21 @@ function CounterCard({
                 )}
                 Served
               </Button>
-              {/* <Button
-                variant="outline"
-                size="icon"
-                className="h-10 w-10 shrink-0"
-              >
-                <MoreHorizontal className="h-4 w-4" />
-              </Button> */}
+            </div>
+          ) : isUnavailable ? (
+            <Button
+              className="w-full h-11 gap-2 text-base font-bold"
+              variant="outline"
+              disabled
+            >
+              <X className="h-5 w-5" />
+              Unavailable
+            </Button>
+          ) : allServicesExhausted ? (
+            <div className="w-full rounded-lg border border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-950/30 px-4 py-3 text-center space-y-1">
+              <p className="text-sm font-semibold text-red-600 dark:text-red-400">
+                Daily Service Limit Reached
+              </p>
             </div>
           ) : (
             <Button

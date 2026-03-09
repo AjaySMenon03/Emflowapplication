@@ -8,14 +8,14 @@
 
 // Types
 export type {
-    QueueEntryStatus,
-    SessionStatus,
-    QueueSession,
-    QueueEntry,
-    LockRecord,
-    AuditEventType,
-    AuditLogEntry,
-    BusinessHoursCheck,
+  QueueEntryStatus,
+  SessionStatus,
+  QueueSession,
+  QueueEntry,
+  LockRecord,
+  AuditEventType,
+  AuditLogEntry,
+  BusinessHoursCheck,
 } from "./types.ts";
 
 export { DEFAULT_AUTO_NOSHOW_TIMEOUT_MINUTES } from "./types.ts";
@@ -31,7 +31,10 @@ export { acquireLock, releaseLock } from "./lock.ts";
 export { TransactionBatch, withTransaction } from "./transaction.ts";
 
 // Validation
-export { validateSessionActive, validateStaffForQueueType } from "./validation.ts";
+export {
+  validateSessionActive,
+  validateStaffForQueueType,
+} from "./validation.ts";
 
 // Broadcast
 export { broadcastChange } from "./broadcast.ts";
@@ -41,40 +44,47 @@ export { todayInTimezone, nowInTimezone } from "./timezone.ts";
 export { checkBusinessHours } from "./business-hours.ts";
 
 // Entry
-export { createQueueEntry, calculatePosition, calculateETA, recalcPositions } from "./entry.ts";
+export {
+  createQueueEntry,
+  calculatePosition,
+  calculateETA,
+  recalcPositions,
+} from "./entry.ts";
 
 // Operations
 export {
-    callNext,
-    startServing,
-    markServed,
-    markNoShow,
-    cancelEntry,
-    moveEntry,
-    reassignStaff,
-    cancelEntryEnhanced,
-    markPreviousAsServed,
+  callNext,
+  startServing,
+  markServed,
+  markNoShow,
+  cancelEntry,
+  moveEntry,
+  reassignStaff,
+  cancelEntryEnhanced,
+  markPreviousAsServed,
 } from "./operations.ts";
 
 // Session
 export {
-    getOrCreateTodaySession,
-    getOrCreateTodaySessionSmart,
-    getActiveSession,
-    closeSession,
-    closeAllSessionsForLocation,
-    archiveOldSessions,
-    autoCloseExpiredSessions,
-    midnightRotation,
+  getOrCreateTodaySession,
+  getOrCreateTodaySessionSmart,
+  getActiveSession,
+  closeSession,
+  closeAllSessionsForLocation,
+  archiveOldSessions,
+  autoCloseExpiredSessions,
+  midnightRotation,
 } from "./session.ts";
 
 // Read Helpers
 export {
-    getLocationEntries,
-    getSessionEntries,
-    getQueueTypesForLocation,
-    countActiveEntries,
-    calculateTotalBacklogTime,
+  getLocationEntries,
+  getSessionEntries,
+  getQueueTypesForLocation,
+  countActiveEntries,
+  calculateTotalBacklogTime,
+  isServiceExhausted,
+  isCounterAtDailyCapacity,
 } from "./read-helpers.ts";
 
 // Duplicate

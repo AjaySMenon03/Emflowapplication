@@ -210,8 +210,13 @@ export function register(app: Hono) {
             const entriesForThisCounter = activeEntriesToday.filter(
               (e: any) => e.queue_type_id === qt.id,
             );
-            const confirmedLoad = entriesForThisCounter.filter((e: any) =>
-              ["waiting", "next", "serving"].includes(e.status),
+            // Active slot consumption: entries that currently hold or have held a
+            // physical slot on this counter. no_show entries are EXCLUDED because
+            // a no-show frees the physical slot for re-booking. Waitlisted and
+            // cancelled never held a confirmed slot.
+            const confirmedLoad = entriesForThisCounter.filter(
+              (e: any) =>
+                !["waitlisted", "cancelled", "no_show"].includes(e.status),
             ).length;
             const waitlistLoad = entriesForThisCounter.filter(
               (e: any) => e.status === "waitlisted",
@@ -336,6 +341,21 @@ export function register(app: Hono) {
       }
       const location = await kv.get(`location:${entry.location_id}`);
       const business = await kv.get(`business:${entry.business_id}`);
+
+      // Check daily service exhaustion for waitlisted customers
+      let serviceExhausted = false;
+      if (
+        entry.status === "waitlisted" &&
+        entry.service_id &&
+        entry.business_id
+      ) {
+        serviceExhausted = await queueLogic.isServiceExhausted(
+          entry.service_id,
+          entry.location_id,
+          entry.business_id,
+        );
+      }
+
       return c.json({
         entry,
         position: position.position,
@@ -345,9 +365,16 @@ export function register(app: Hono) {
           ? { name: location.name, address: location.address }
           : null,
         businessName: business?.name || null,
+        serviceExhausted,
       });
     } catch (err: any) {
-      return c.json({ error: `Status fetch failed: ${err.message}` }, 500);
+      // Never leak raw HTML (e.g. Cloudflare 502 pages) to the client
+      const rawMsg: string = String(err?.message || "");
+      const safeMsg =
+        rawMsg.trimStart().startsWith("<") || rawMsg.length > 300
+          ? "Service temporarily unavailable. Please try again shortly."
+          : rawMsg;
+      return c.json({ error: safeMsg }, 500);
     }
   });
 

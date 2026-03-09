@@ -63,6 +63,7 @@ interface StatusData {
     ticket_number: string;
     status: string;
     queue_type_name: string | null;
+    service_name: string | null;
     joined_at: string;
     called_at: string | null;
     customer_name: string | null;
@@ -73,6 +74,7 @@ interface StatusData {
   estimatedMinutes: number;
   location: { name: string; address: string | null } | null;
   businessName: string | null;
+  serviceExhausted?: boolean;
 }
 
 const STATUS_CONFIG: Record<
@@ -322,15 +324,45 @@ export function StatusPage() {
 
   // ── Error / not found ──
   if (!data) {
+    // Distinguish between a transient service error and a genuinely missing entry
+    const isTransientError =
+      error !== "" &&
+      error !== "Entry not found" &&
+      !error.toLowerCase().includes("not found");
+
     return (
       <div className="flex min-h-screen items-center justify-center bg-background p-4">
         <Card className="w-full max-w-md text-center">
-          <CardContent className="py-12">
-            <AlertTriangle className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
-            <h2 className="text-foreground mb-2">Entry Not Found</h2>
+          <CardContent className="py-12 space-y-4">
+            {isTransientError ? (
+              <Wifi className="mx-auto h-12 w-12 text-amber-400 mb-4" />
+            ) : (
+              <AlertTriangle className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
+            )}
+            <h2 className="text-foreground">
+              {isTransientError ? "Service Unavailable" : "Entry Not Found"}
+            </h2>
             <p className="text-muted-foreground text-sm">
-              {error || "This queue entry doesn't exist or has expired."}
+              {isTransientError
+                ? "We're having trouble reaching the server. Please try again."
+                : "This queue entry doesn't exist or has expired."}
             </p>
+            {isTransientError && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setLoading(true);
+                  fetchStatus();
+                }}
+                className="gap-2"
+              >
+                <Loader2
+                  className={loading ? "h-4 w-4 animate-spin" : "h-4 w-4"}
+                />
+                Try Again
+              </Button>
+            )}
           </CardContent>
         </Card>
       </div>
@@ -338,7 +370,19 @@ export function StatusPage() {
   }
 
   const status = data.entry.status;
-  const config = STATUS_CONFIG[status] || STATUS_CONFIG.waiting;
+  const isExhaustedWaitlist =
+    status === "waitlisted" && data.serviceExhausted === true;
+  const config = isExhaustedWaitlist
+    ? {
+        color: "text-red-600 dark:text-red-400",
+        bg: "bg-red-500/10",
+        icon: Ban,
+        title: "Slot Not Confirmed",
+        message: `We apologize, but the maximum daily limit of customers for ${
+          data.entry.service_name || "this service"
+        } has already been reached. No further tickets will be confirmed today.`,
+      }
+    : STATUS_CONFIG[status] || STATUS_CONFIG.waiting;
   const StatusIcon = config.icon;
   const isActive =
     status === "waiting" ||
