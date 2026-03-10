@@ -564,7 +564,8 @@ export function StatusPage() {
             )}
           </Button>
 
-          {(status === "waiting" || status === "waitlisted") && (
+          {(status === "waiting" ||
+            (status === "waitlisted" && !isExhaustedWaitlist)) && (
             <Button
               variant="outline"
               className="flex-1 border-destructive/30 text-destructive hover:bg-destructive/10"
@@ -582,7 +583,7 @@ export function StatusPage() {
         </div>
 
         {/* Notification opt-in */}
-        {isActive && permission !== "granted" && "Notification" in window && (
+        {/* {isActive && permission !== "granted" && "Notification" in window && (
           <button
             onClick={requestPermission}
             className="w-full flex items-center justify-center gap-2 rounded-lg border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-950/30 px-4 py-3 text-sm text-blue-700 dark:text-blue-300 hover:bg-blue-100 dark:hover:bg-blue-950/50 transition-colors"
@@ -590,7 +591,7 @@ export function StatusPage() {
             <Bell className="h-4 w-4" />
             <span>Enable notifications to know when it's your turn</span>
           </button>
-        )}
+        )} */}
         {isActive && permission === "granted" && (
           <div className="flex items-center justify-center gap-2 text-xs text-emerald-600 dark:text-emerald-400">
             <Bell className="h-3.5 w-3.5" />

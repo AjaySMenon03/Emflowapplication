@@ -592,18 +592,50 @@ export async function cancelEntryEnhanced(
   }>(lockKey, async (batch) => {
     const fresh = await kv.get(`queue_entry:${entryId}`);
     if (!fresh) throw new Error("Entry not found");
-    if (fresh.status !== "waiting" && fresh.status !== "next") {
+    if (
+      fresh.status !== "waiting" &&
+      fresh.status !== "next" &&
+      fresh.status !== "waitlisted"
+    ) {
       throw new Error(
         `Entry can no longer be cancelled (status: ${fresh.status})`,
       );
     }
 
     const freshWasNext = fresh.status === "next";
+    const freshWasWaitlisted = fresh.status === "waitlisted";
     fresh.status = "cancelled";
     fresh.cancelled_at = now();
     batch.set(`queue_entry:${entryId}`, fresh);
 
     let promoted: QueueEntry | null = null;
+
+    // Renumber remaining waitlisted entries for this queue type
+    if (freshWasWaitlisted) {
+      const sessionEntryIds: string[] =
+        (await kv.get(`session_entries:${fresh.queue_session_id}`)) || [];
+      const remaining: QueueEntry[] = [];
+      for (const eid of sessionEntryIds) {
+        if (eid === entryId) continue;
+        const e = await kv.get(`queue_entry:${eid}`);
+        if (
+          e &&
+          e.queue_type_id === fresh.queue_type_id &&
+          e.status === "waitlisted"
+        ) {
+          remaining.push(e);
+        }
+      }
+      remaining.sort(
+        (a, b) => (a.waitlist_number || 0) - (b.waitlist_number || 0),
+      );
+      for (let i = 0; i < remaining.length; i++) {
+        const r = remaining[i];
+        r.waitlist_number = i + 1;
+        r.ticket_number = `WL${r.waitlist_number}`;
+        batch.set(`queue_entry:${r.id}`, r);
+      }
+    }
 
     if (freshWasNext) {
       batch.del(nextKey);
