@@ -1,5 +1,5 @@
 /**
- * EM Flow — Service Worker
+ * Quecumber — Service Worker
  *
  * Features:
  *   - App shell caching for offline support
@@ -19,7 +19,7 @@ self.addEventListener("install", (event) => {
       return cache.addAll(APP_SHELL).catch(() => {
         // Non-critical: some assets may not cache during dev
       });
-    })
+    }),
   );
   self.skipWaiting();
 });
@@ -31,9 +31,9 @@ self.addEventListener("activate", (event) => {
       return Promise.all(
         names
           .filter((name) => name !== CACHE_NAME)
-          .map((name) => caches.delete(name))
+          .map((name) => caches.delete(name)),
       );
-    })
+    }),
   );
   self.clients.claim();
 });
@@ -59,7 +59,7 @@ self.addEventListener("fetch", (event) => {
     event.respondWith(
       fetch(event.request).catch(() => {
         return caches.match("/index.html");
-      })
+      }),
     );
     return;
   }
@@ -81,13 +81,13 @@ self.addEventListener("fetch", (event) => {
         .catch(() => cached);
 
       return cached || fetchPromise;
-    })
+    }),
   );
 });
 
 // ── Push Notification handler ──
 self.addEventListener("push", (event) => {
-  let data = { title: "EM Flow", body: "Queue update", tag: "queue-update" };
+  let data = { title: "Quecumber", body: "Queue update", tag: "queue-update" };
 
   try {
     if (event.data) {
@@ -143,6 +143,6 @@ self.addEventListener("notificationclick", (event) => {
       }
       // Otherwise open new window
       return self.clients.openWindow(targetUrl);
-    })
+    }),
   );
 });

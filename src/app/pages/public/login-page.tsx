@@ -29,7 +29,13 @@ import {
   CheckCircle2,
 } from "lucide-react";
 
-type AuthMode = "select" | "email" | "signup" | "magic" | "phone" | "otp-verify";
+type AuthMode =
+  | "select"
+  | "email"
+  | "signup"
+  | "magic"
+  | "phone"
+  | "otp-verify";
 
 export function LoginPage() {
   const { t } = useLocaleStore();
@@ -45,6 +51,21 @@ export function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+
+  const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  const PW_STRONG_RE =
+    /^(?=.*\d)(?=.*[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]).{8,}$/;
+  const PHONE_RE = /^\+?[\d\s\-()]{10,15}$/;
+
+  const fe = (field: string, msg: string) =>
+    setFieldErrors((p) => ({ ...p, [field]: msg }));
+  const clearFe = (field: string) =>
+    setFieldErrors((p) => {
+      const n = { ...p };
+      delete n[field];
+      return n;
+    });
 
   // Redirect if already authenticated
   useEffect(() => {
@@ -62,13 +83,22 @@ export function LoginPage() {
   const resetMessages = () => {
     setError("");
     setSuccess("");
+    setFieldErrors({});
   };
 
   // ── Email/Password Login ──
   const handleEmailLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    setLoading(true);
     resetMessages();
+    const errs: Record<string, string> = {};
+    if (!email.trim()) errs.email = "Email is required";
+    else if (!EMAIL_RE.test(email)) errs.email = "Enter a valid email address";
+    if (!password) errs.password = "Password is required";
+    if (Object.keys(errs).length) {
+      setFieldErrors(errs);
+      return;
+    }
+    setLoading(true);
     try {
       const { error } = await supabase.auth.signInWithPassword({
         email,
@@ -85,8 +115,22 @@ export function LoginPage() {
   // ── Email/Password Signup ──
   const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault();
-    setLoading(true);
     resetMessages();
+    const errs: Record<string, string> = {};
+    if (!name.trim() || name.trim().length < 2)
+      errs.signupName = "Full name must be at least 2 characters";
+    if (!email.trim()) errs.signupEmail = "Email is required";
+    else if (!EMAIL_RE.test(email))
+      errs.signupEmail = "Enter a valid email address";
+    if (!password) errs.signupPassword = "Password is required";
+    else if (!PW_STRONG_RE.test(password))
+      errs.signupPassword =
+        "Must be ≥8 characters and include a number and special character";
+    if (Object.keys(errs).length) {
+      setFieldErrors(errs);
+      return;
+    }
+    setLoading(true);
     try {
       const { error: signupErr } = await api("/auth/signup", {
         method: "POST",
@@ -105,7 +149,7 @@ export function LoginPage() {
           });
           if (loginErr) {
             setError(
-              "An account with this email already exists. Please sign in instead."
+              "An account with this email already exists. Please sign in instead.",
             );
             setMode("email");
           }
@@ -150,8 +194,16 @@ export function LoginPage() {
   // ── Magic Link ──
   const handleMagicLink = async (e: React.FormEvent) => {
     e.preventDefault();
-    setLoading(true);
     resetMessages();
+    const errs: Record<string, string> = {};
+    if (!email.trim()) errs.magicEmail = "Email is required";
+    else if (!EMAIL_RE.test(email))
+      errs.magicEmail = "Enter a valid email address";
+    if (Object.keys(errs).length) {
+      setFieldErrors(errs);
+      return;
+    }
+    setLoading(true);
     try {
       const { error } = await supabase.auth.signInWithOtp({
         email,
@@ -174,8 +226,17 @@ export function LoginPage() {
   // ── Phone OTP ──
   const handlePhoneOtp = async (e: React.FormEvent) => {
     e.preventDefault();
-    setLoading(true);
     resetMessages();
+    const errs: Record<string, string> = {};
+    if (!phone.trim()) errs.phone = "Phone number is required";
+    else if (!PHONE_RE.test(phone))
+      errs.phone =
+        "Enter a valid phone number (10–15 digits, with optional + prefix)";
+    if (Object.keys(errs).length) {
+      setFieldErrors(errs);
+      return;
+    }
+    setLoading(true);
     try {
       const { error } = await supabase.auth.signInWithOtp({ phone });
       if (error) {
@@ -194,8 +255,16 @@ export function LoginPage() {
   // ── Verify Phone OTP ──
   const handleVerifyOtp = async (e: React.FormEvent) => {
     e.preventDefault();
-    setLoading(true);
     resetMessages();
+    const errs: Record<string, string> = {};
+    if (!otpCode.trim()) errs.otpCode = "Verification code is required";
+    else if (!/^\d{6}$/.test(otpCode))
+      errs.otpCode = "Enter the 6-digit code sent to your phone";
+    if (Object.keys(errs).length) {
+      setFieldErrors(errs);
+      return;
+    }
+    setLoading(true);
     try {
       const { error } = await supabase.auth.verifyOtp({
         phone,
@@ -217,7 +286,7 @@ export function LoginPage() {
           <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-primary">
             <Zap className="h-7 w-7 text-primary-foreground" />
           </div>
-          <CardTitle className="text-xl">EM Flow</CardTitle>
+          <CardTitle className="text-xl">Quecumber</CardTitle>
           <CardDescription>
             {mode === "signup"
               ? "Create your account"
@@ -236,7 +305,9 @@ export function LoginPage() {
           {success && (
             <div className="flex items-center gap-2 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-4 py-3">
               <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
-              <p className="text-emerald-700 dark:text-emerald-400 text-sm">{success}</p>
+              <p className="text-emerald-700 dark:text-emerald-400 text-sm">
+                {success}
+              </p>
             </div>
           )}
 
@@ -333,10 +404,23 @@ export function LoginPage() {
                   type="email"
                   placeholder="you@example.com"
                   value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  required
+                  onChange={(e) => {
+                    setEmail(e.target.value);
+                    clearFe("email");
+                  }}
+                  onBlur={() => {
+                    if (!email.trim()) fe("email", "Email is required");
+                    else if (!EMAIL_RE.test(email))
+                      fe("email", "Enter a valid email address");
+                  }}
+                  aria-invalid={!!fieldErrors.email}
                   autoFocus
                 />
+                {fieldErrors.email && (
+                  <p className="text-xs text-destructive mt-1">
+                    {fieldErrors.email}
+                  </p>
+                )}
               </div>
               <div className="space-y-2">
                 <Label htmlFor="password">Password</Label>
@@ -345,9 +429,20 @@ export function LoginPage() {
                   type="password"
                   placeholder="Enter your password"
                   value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  required
+                  onChange={(e) => {
+                    setPassword(e.target.value);
+                    clearFe("password");
+                  }}
+                  onBlur={() => {
+                    if (!password) fe("password", "Password is required");
+                  }}
+                  aria-invalid={!!fieldErrors.password}
                 />
+                {fieldErrors.password && (
+                  <p className="text-xs text-destructive mt-1">
+                    {fieldErrors.password}
+                  </p>
+                )}
                 <div className="text-right">
                   <Link
                     to="/forgot-password"
@@ -375,10 +470,25 @@ export function LoginPage() {
                   type="text"
                   placeholder="John Doe"
                   value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  required
+                  onChange={(e) => {
+                    setName(e.target.value);
+                    clearFe("signupName");
+                  }}
+                  onBlur={() => {
+                    if (!name.trim() || name.trim().length < 2)
+                      fe(
+                        "signupName",
+                        "Full name must be at least 2 characters",
+                      );
+                  }}
+                  aria-invalid={!!fieldErrors.signupName}
                   autoFocus
                 />
+                {fieldErrors.signupName && (
+                  <p className="text-xs text-destructive mt-1">
+                    {fieldErrors.signupName}
+                  </p>
+                )}
               </div>
               <div className="space-y-2">
                 <Label htmlFor="signup-email">Email</Label>
@@ -387,21 +497,49 @@ export function LoginPage() {
                   type="email"
                   placeholder="you@example.com"
                   value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  required
+                  onChange={(e) => {
+                    setEmail(e.target.value);
+                    clearFe("signupEmail");
+                  }}
+                  onBlur={() => {
+                    if (!email.trim()) fe("signupEmail", "Email is required");
+                    else if (!EMAIL_RE.test(email))
+                      fe("signupEmail", "Enter a valid email address");
+                  }}
+                  aria-invalid={!!fieldErrors.signupEmail}
                 />
+                {fieldErrors.signupEmail && (
+                  <p className="text-xs text-destructive mt-1">
+                    {fieldErrors.signupEmail}
+                  </p>
+                )}
               </div>
               <div className="space-y-2">
                 <Label htmlFor="signup-password">Password</Label>
                 <Input
                   id="signup-password"
                   type="password"
-                  placeholder="Min. 6 characters"
+                  placeholder="Min. 8 chars, 1 number, 1 special"
                   value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  required
-                  minLength={6}
+                  onChange={(e) => {
+                    setPassword(e.target.value);
+                    clearFe("signupPassword");
+                  }}
+                  onBlur={() => {
+                    if (!password) fe("signupPassword", "Password is required");
+                    else if (!PW_STRONG_RE.test(password))
+                      fe(
+                        "signupPassword",
+                        "Must be ≥8 characters and include a number and special character",
+                      );
+                  }}
+                  aria-invalid={!!fieldErrors.signupPassword}
                 />
+                {fieldErrors.signupPassword && (
+                  <p className="text-xs text-destructive mt-1">
+                    {fieldErrors.signupPassword}
+                  </p>
+                )}
               </div>
               <Button type="submit" className="w-full" disabled={loading}>
                 {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
@@ -421,10 +559,23 @@ export function LoginPage() {
                   type="email"
                   placeholder="you@example.com"
                   value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  required
+                  onChange={(e) => {
+                    setEmail(e.target.value);
+                    clearFe("magicEmail");
+                  }}
+                  onBlur={() => {
+                    if (!email.trim()) fe("magicEmail", "Email is required");
+                    else if (!EMAIL_RE.test(email))
+                      fe("magicEmail", "Enter a valid email address");
+                  }}
+                  aria-invalid={!!fieldErrors.magicEmail}
                   autoFocus
                 />
+                {fieldErrors.magicEmail && (
+                  <p className="text-xs text-destructive mt-1">
+                    {fieldErrors.magicEmail}
+                  </p>
+                )}
               </div>
               <Button type="submit" className="w-full" disabled={loading}>
                 {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
@@ -444,13 +595,30 @@ export function LoginPage() {
                   type="tel"
                   placeholder="+1234567890"
                   value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
-                  required
+                  onChange={(e) => {
+                    setPhone(e.target.value);
+                    clearFe("phone");
+                  }}
+                  onBlur={() => {
+                    if (!phone.trim()) fe("phone", "Phone number is required");
+                    else if (!PHONE_RE.test(phone))
+                      fe(
+                        "phone",
+                        "Enter a valid phone number (10–15 digits, with optional + prefix)",
+                      );
+                  }}
+                  aria-invalid={!!fieldErrors.phone}
                   autoFocus
                 />
-                <p className="text-xs text-muted-foreground">
-                  Include country code (e.g. +1 for US)
-                </p>
+                {fieldErrors.phone ? (
+                  <p className="text-xs text-destructive mt-1">
+                    {fieldErrors.phone}
+                  </p>
+                ) : (
+                  <p className="text-xs text-muted-foreground">
+                    Include country code (e.g. +1 for US)
+                  </p>
+                )}
               </div>
               <Button type="submit" className="w-full" disabled={loading}>
                 {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
@@ -470,20 +638,41 @@ export function LoginPage() {
                   type="text"
                   placeholder="Enter 6-digit code"
                   value={otpCode}
-                  onChange={(e) => setOtpCode(e.target.value)}
-                  required
+                  onChange={(e) => {
+                    setOtpCode(e.target.value.replace(/\D/g, "").slice(0, 6));
+                    clearFe("otpCode");
+                  }}
+                  onBlur={() => {
+                    if (!otpCode)
+                      fe("otpCode", "Verification code is required");
+                    else if (!/^\d{6}$/.test(otpCode))
+                      fe(
+                        "otpCode",
+                        "Enter the 6-digit code sent to your phone",
+                      );
+                  }}
+                  aria-invalid={!!fieldErrors.otpCode}
                   maxLength={6}
                   autoFocus
                 />
-                <p className="text-xs text-muted-foreground">
-                  Sent to {phone}
-                </p>
+                {fieldErrors.otpCode ? (
+                  <p className="text-xs text-destructive mt-1">
+                    {fieldErrors.otpCode}
+                  </p>
+                ) : (
+                  <p className="text-xs text-muted-foreground">
+                    Sent to {phone}
+                  </p>
+                )}
               </div>
               <Button type="submit" className="w-full" disabled={loading}>
                 {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                 Verify Code
               </Button>
-              <BackButton onClick={() => setMode("phone")} label="Change number" />
+              <BackButton
+                onClick={() => setMode("phone")}
+                label="Change number"
+              />
             </form>
           )}
         </CardContent>

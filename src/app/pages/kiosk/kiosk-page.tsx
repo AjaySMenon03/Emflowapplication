@@ -23,7 +23,11 @@ import { useRealtime } from "../../lib/use-realtime";
 import { useThemeStore } from "../../stores/theme-store";
 import { useKioskSound } from "../../lib/use-kiosk-sound";
 import { useLocaleStore } from "../../stores/locale-store";
-import { useNetworkStatus, cacheSet, cacheGet } from "../../lib/use-network-status";
+import {
+  useNetworkStatus,
+  cacheSet,
+  cacheGet,
+} from "../../lib/use-network-status";
 import { OfflineBanner } from "../../components/offline-banner";
 import { enqueue } from "../../lib/offline-queue";
 import { toast } from "sonner";
@@ -138,7 +142,9 @@ export function KioskPage() {
   const [showPinEntry, setShowPinEntry] = useState(false);
   const [pinInput, setPinInput] = useState("");
   const [pinError, setPinError] = useState("");
-  const [pinAction, setPinAction] = useState<"lock" | "unlock" | "exit">("lock");
+  const [pinAction, setPinAction] = useState<"lock" | "unlock" | "exit">(
+    "lock",
+  );
 
   // ── Low Interaction Mode state ──
   const [callNextLoading, setCallNextLoading] = useState(false);
@@ -152,11 +158,12 @@ export function KioskPage() {
 
   // ── Offline Resilience ──
   const KIOSK_CACHE_KEY = `kiosk-queue:${locationId}`;
-  const { isOnline, isReconnecting, lastSyncedAt, markSynced } = useNetworkStatus({
-    onReconnect: () => {
-      fetchEntries();
-    },
-  });
+  const { isOnline, isReconnecting, lastSyncedAt, markSynced } =
+    useNetworkStatus({
+      onReconnect: () => {
+        fetchEntries();
+      },
+    });
 
   // Cache queue state whenever it updates online
   useEffect(() => {
@@ -169,7 +176,9 @@ export function KioskPage() {
   // Restore from cache if offline on mount
   useEffect(() => {
     if (!isOnline && locationId && !serving.length && !waiting.length) {
-      const cached = cacheGet<{ serving: KioskEntry[]; waiting: KioskEntry[] }>(KIOSK_CACHE_KEY);
+      const cached = cacheGet<{ serving: KioskEntry[]; waiting: KioskEntry[] }>(
+        KIOSK_CACHE_KEY,
+      );
       if (cached?.data) {
         setServing(cached.data.serving || []);
         setWaiting(cached.data.waiting || []);
@@ -228,7 +237,8 @@ export function KioskPage() {
     const handler = (e: KeyboardEvent) => {
       // Block Ctrl+L, Ctrl+D, F5, Alt+Left/Right, etc.
       if (
-        (e.ctrlKey && ["l", "d", "t", "n", "w"].includes(e.key.toLowerCase())) ||
+        (e.ctrlKey &&
+          ["l", "d", "t", "n", "w"].includes(e.key.toLowerCase())) ||
         e.key === "F5" ||
         (e.altKey && (e.key === "ArrowLeft" || e.key === "ArrowRight"))
       ) {
@@ -289,7 +299,7 @@ export function KioskPage() {
 
       if (!initialLoadRef.current) {
         const newlyCalledEntries = allServing.filter(
-          (s) => !prevIds.includes(s.id)
+          (s) => !prevIds.includes(s.id),
         );
 
         if (newlyCalledEntries.length > 0) {
@@ -328,7 +338,7 @@ export function KioskPage() {
     () => {
       fetchEntries();
     },
-    2000
+    2000,
   );
 
   // ── Fullscreen toggle ──
@@ -393,14 +403,14 @@ export function KioskPage() {
 
     setCallNextLoading(true);
 
-    const { data, error } = await api<{ entry: KioskEntry | null; message?: string }>(
-      "/kiosk/call-next",
-      {
-        method: "POST",
-        body: { locationId },
-        accessToken: staffToken,
-      }
-    );
+    const { data, error } = await api<{
+      entry: KioskEntry | null;
+      message?: string;
+    }>("/kiosk/call-next", {
+      method: "POST",
+      body: { locationId },
+      accessToken: staffToken,
+    });
 
     setCallNextLoading(false);
 
@@ -493,10 +503,13 @@ export function KioskPage() {
       }
 
       // Verify PIN server-side
-      const { data, error } = await api<{ valid: boolean }>("/kiosk/verify-pin", {
-        method: "POST",
-        body: { locationId, pin: pinInput },
-      });
+      const { data, error } = await api<{ valid: boolean }>(
+        "/kiosk/verify-pin",
+        {
+          method: "POST",
+          body: { locationId, pin: pinInput },
+        },
+      );
 
       if (error || !data?.valid) {
         setPinError(t("kiosk.invalidPin"));
@@ -510,10 +523,13 @@ export function KioskPage() {
       setPinError("");
     } else if (pinAction === "unlock" || pinAction === "exit") {
       // Verify PIN server-side to unlock
-      const { data, error } = await api<{ valid: boolean }>("/kiosk/verify-pin", {
-        method: "POST",
-        body: { locationId, pin: pinInput },
-      });
+      const { data, error } = await api<{ valid: boolean }>(
+        "/kiosk/verify-pin",
+        {
+          method: "POST",
+          body: { locationId, pin: pinInput },
+        },
+      );
 
       if (error || !data?.valid) {
         setPinError(t("kiosk.invalidPin"));
@@ -571,7 +587,9 @@ export function KioskPage() {
           <Zap className="h-10 w-10 text-primary-foreground" />
         </div>
         <Loader2 className="h-10 w-10 animate-spin text-muted-foreground" />
-        <p className="text-muted-foreground text-xl">{t("kiosk.loadingDisplay")}</p>
+        <p className="text-muted-foreground text-xl">
+          {t("kiosk.loadingDisplay")}
+        </p>
       </div>
     );
   }
@@ -628,8 +646,8 @@ export function KioskPage() {
                   {pinAction === "lock"
                     ? t("kiosk.enterPinToLock")
                     : pinAction === "exit"
-                    ? t("kiosk.enterPinToExit")
-                    : t("kiosk.enterPinToUnlock")}
+                      ? t("kiosk.enterPinToExit")
+                      : t("kiosk.enterPinToUnlock")}
                 </h3>
                 <p className="text-muted-foreground mt-2 text-lg">
                   {t("kiosk.enter4DigitPin")}
@@ -660,8 +678,7 @@ export function KioskPage() {
               {/* Number Pad */}
               <div className="grid grid-cols-3 gap-3 max-w-xs mx-auto">
                 {[1, 2, 3, 4, 5, 6, 7, 8, 9, null, 0, "del"].map((key, i) => {
-                  if (key === null)
-                    return <div key={i} />;
+                  if (key === null) return <div key={i} />;
                   if (key === "del") {
                     return (
                       <button
@@ -939,7 +956,7 @@ export function KioskPage() {
             <Zap className="h-6 w-6 text-primary-foreground" />
           </div>
           <h1 className="text-3xl md:text-4xl font-bold text-primary-foreground tracking-tight">
-            {businessName || "EM Flow"}
+            {businessName || "Quecumber"}
           </h1>
         </div>
         <div className="flex items-center justify-center gap-3 text-primary-foreground/80">
@@ -955,7 +972,11 @@ export function KioskPage() {
       </div>
 
       {/* ── Offline Banner ── */}
-      <OfflineBanner isOnline={isOnline} isReconnecting={isReconnecting} lastSyncedAt={lastSyncedAt} />
+      <OfflineBanner
+        isOnline={isOnline}
+        isReconnecting={isReconnecting}
+        lastSyncedAt={lastSyncedAt}
+      />
 
       {/* ── Main Content ── */}
       <div className="flex-1 overflow-auto p-4 md:p-8 space-y-6 md:space-y-8">
@@ -1138,7 +1159,8 @@ export function KioskPage() {
                       {entry.ticket_number}
                     </p>
                     <p className="text-muted-foreground text-sm md:text-base truncate">
-                      {entry.queue_type_name} — {entry.customer_name || "Customer"}
+                      {entry.queue_type_name} —{" "}
+                      {entry.customer_name || "Customer"}
                     </p>
                   </div>
                   <div className="text-right shrink-0">
@@ -1226,7 +1248,9 @@ export function KioskPage() {
           {staffMode ? (
             <Button
               onClick={handleCallNext}
-              disabled={callNextLoading || callNextCooldown || totalWaiting === 0}
+              disabled={
+                callNextLoading || callNextCooldown || totalWaiting === 0
+              }
               size="lg"
               className={`h-14 md:h-16 px-8 md:px-12 text-lg md:text-xl font-bold rounded-2xl gap-3 shadow-lg transition-all duration-300 ${
                 callNextCooldown
@@ -1244,8 +1268,8 @@ export function KioskPage() {
               {callNextLoading
                 ? t("kiosk.calling")
                 : callNextCooldown
-                ? t("kiosk.pleaseWait")
-                : `${t("kiosk.callNext")} (${totalWaiting})`}
+                  ? t("kiosk.pleaseWait")
+                  : `${t("kiosk.callNext")} (${totalWaiting})`}
             </Button>
           ) : (
             <Button
@@ -1261,7 +1285,7 @@ export function KioskPage() {
           {/* Right: Branding */}
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <Zap className="h-4 w-4" />
-            <span className="hidden md:inline font-medium">EM Flow</span>
+            <span className="hidden md:inline font-medium">Quecumber</span>
           </div>
         </div>
       </div>

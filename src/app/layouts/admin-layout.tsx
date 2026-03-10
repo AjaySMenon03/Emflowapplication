@@ -32,14 +32,29 @@ import { Separator } from "../components/ui/separator";
 import { Badge } from "../components/ui/badge";
 
 const navItems = [
-  { path: "/admin", icon: LayoutDashboard, labelKey: "nav.dashboard", end: true },
+  {
+    path: "/admin",
+    icon: LayoutDashboard,
+    labelKey: "nav.dashboard",
+    end: true,
+  },
   { path: "/admin/queues", icon: ListOrdered, labelKey: "nav.queues" },
   { path: "/admin/users", icon: Users, labelKey: "nav.customers" },
   { path: "/admin/reports", icon: BarChart3, labelKey: "nav.reports" },
-  { path: "/admin/analytics", icon: TrendingUp, labelKey: "nav.analytics", ownerOnly: true },
+  {
+    path: "/admin/analytics",
+    icon: TrendingUp,
+    labelKey: "nav.analytics",
+    ownerOnly: true,
+  },
   { path: "/admin/qr", icon: QrCode, labelKey: "nav.qrStand" },
   { path: "/admin/settings", icon: Settings, labelKey: "nav.settings" },
-  { path: "/admin/audit", icon: ScrollText, labelKey: "nav.audit", ownerOnly: true },
+  {
+    path: "/admin/audit",
+    icon: ScrollText,
+    labelKey: "nav.audit",
+    ownerOnly: true,
+  },
 ];
 
 export function AdminLayout() {
@@ -94,7 +109,7 @@ export function AdminLayout() {
             <Zap className="h-4 w-4 text-primary-foreground" />
           </div>
           <span className="font-semibold text-sidebar-foreground tracking-tight">
-            EM Flow
+            Quecumber
           </span>
           <button
             className="ml-auto lg:hidden p-1 rounded-md hover:bg-sidebar-accent transition-colors"
@@ -118,9 +133,10 @@ export function AdminLayout() {
                 end={item.end}
                 onClick={() => setSidebarOpen(false)}
                 className={({ isActive }) =>
-                  `flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition-all duration-200 ${isActive
-                    ? "bg-sidebar-accent text-sidebar-accent-foreground font-medium shadow-sm"
-                    : "text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground"
+                  `flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition-all duration-200 ${
+                    isActive
+                      ? "bg-sidebar-accent text-sidebar-accent-foreground font-medium shadow-sm"
+                      : "text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground"
                   }`
                 }
               >
@@ -180,7 +196,9 @@ export function AdminLayout() {
                 />
               ) : (
                 <span className="text-sm font-semibold text-primary">
-                  {(staffRecord?.name || user?.email || "U").charAt(0).toUpperCase()}
+                  {(staffRecord?.name || user?.email || "U")
+                    .charAt(0)
+                    .toUpperCase()}
                 </span>
               )}
             </div>

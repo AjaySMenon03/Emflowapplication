@@ -1,5 +1,5 @@
 /**
- * EM Flow Router Configuration
+ * Quecumber Router Configuration
  *
  * Route groups:
  *   (public)      - / , /login, /join/:slug, /status/:id  → PublicLayout / standalone

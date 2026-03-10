@@ -1,5 +1,5 @@
 /**
- * EM Flow - Enterprise Queue Management System
+ * Quecumber - Enterprise Queue Management System
  * Main application entry point.
  */
 import { RouterProvider } from "react-router";

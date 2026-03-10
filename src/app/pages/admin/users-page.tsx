@@ -71,6 +71,14 @@ export function UsersPage() {
   const [editEmail, setEditEmail] = useState("");
   const [editPhone, setEditPhone] = useState("");
   const [editSaving, setEditSaving] = useState(false);
+  const [editErrors, setEditErrors] = useState<{
+    name?: string;
+    email?: string;
+    phone?: string;
+  }>({});
+
+  const EDIT_EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  const EDIT_PHONE_RE = /^\+?[\d\s\-()]{10,15}$/;
 
   // Delete state
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -114,13 +122,22 @@ export function UsersPage() {
     setEditName(customer.name);
     setEditEmail(customer.email);
     setEditPhone(customer.phone);
+    setEditErrors({});
     setEditOpen(true);
   };
 
   const handleEditSave = async () => {
     if (!editCustomer || !accessToken) return;
-    if (!editName.trim()) {
-      toast.error("Name is required");
+    const errs: { name?: string; email?: string; phone?: string } = {};
+    if (!editName.trim()) errs.name = "Name is required";
+    else if (editName.trim().length < 2)
+      errs.name = "Name must be at least 2 characters";
+    if (editEmail.trim() && !EDIT_EMAIL_RE.test(editEmail.trim()))
+      errs.email = "Enter a valid email address";
+    if (editPhone.trim() && !EDIT_PHONE_RE.test(editPhone.trim()))
+      errs.phone = "Enter a valid phone number (10–15 digits)";
+    if (Object.keys(errs).length) {
+      setEditErrors(errs);
       return;
     }
     setEditSaving(true);
@@ -375,11 +392,32 @@ export function UsersPage() {
                 <Input
                   id="edit-customer-name"
                   value={editName}
-                  onChange={(e) => setEditName(e.target.value)}
+                  onChange={(e) => {
+                    setEditName(e.target.value);
+                    setEditErrors((p) => ({ ...p, name: undefined }));
+                  }}
+                  onBlur={() => {
+                    if (!editName.trim())
+                      setEditErrors((p) => ({
+                        ...p,
+                        name: "Name is required",
+                      }));
+                    else if (editName.trim().length < 2)
+                      setEditErrors((p) => ({
+                        ...p,
+                        name: "Name must be at least 2 characters",
+                      }));
+                  }}
                   placeholder="Customer name"
                   className="pl-10"
+                  aria-invalid={!!editErrors.name}
                 />
               </div>
+              {editErrors.name && (
+                <p className="text-xs text-destructive mt-1">
+                  {editErrors.name}
+                </p>
+              )}
             </div>
             <div className="space-y-2">
               <Label htmlFor="edit-customer-email">Email</Label>
@@ -388,11 +426,30 @@ export function UsersPage() {
                 <Input
                   id="edit-customer-email"
                   value={editEmail}
-                  onChange={(e) => setEditEmail(e.target.value)}
+                  onChange={(e) => {
+                    setEditEmail(e.target.value);
+                    setEditErrors((p) => ({ ...p, email: undefined }));
+                  }}
+                  onBlur={() => {
+                    if (
+                      editEmail.trim() &&
+                      !EDIT_EMAIL_RE.test(editEmail.trim())
+                    )
+                      setEditErrors((p) => ({
+                        ...p,
+                        email: "Enter a valid email address",
+                      }));
+                  }}
                   placeholder="customer@email.com"
                   className="pl-10"
+                  aria-invalid={!!editErrors.email}
                 />
               </div>
+              {editErrors.email && (
+                <p className="text-xs text-destructive mt-1">
+                  {editErrors.email}
+                </p>
+              )}
             </div>
             <div className="space-y-2">
               <Label htmlFor="edit-customer-phone">Phone Number</Label>
@@ -401,11 +458,30 @@ export function UsersPage() {
                 <Input
                   id="edit-customer-phone"
                   value={editPhone}
-                  onChange={(e) => setEditPhone(e.target.value)}
+                  onChange={(e) => {
+                    setEditPhone(e.target.value);
+                    setEditErrors((p) => ({ ...p, phone: undefined }));
+                  }}
+                  onBlur={() => {
+                    if (
+                      editPhone.trim() &&
+                      !EDIT_PHONE_RE.test(editPhone.trim())
+                    )
+                      setEditErrors((p) => ({
+                        ...p,
+                        phone: "Enter a valid phone number (10–15 digits)",
+                      }));
+                  }}
                   placeholder="+91 12345 67890"
                   className="pl-10"
+                  aria-invalid={!!editErrors.phone}
                 />
               </div>
+              {editErrors.phone && (
+                <p className="text-xs text-destructive mt-1">
+                  {editErrors.phone}
+                </p>
+              )}
             </div>
           </div>
           <DialogFooter>

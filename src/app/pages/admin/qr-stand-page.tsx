@@ -79,7 +79,7 @@ const STAND_TEXT: Record<
     scanSubtitle: "Live wait time updates",
     instructionDefault:
       "Point your phone camera at the QR code to join instantly.",
-    poweredBy: "Powered by EM Flow",
+    poweredBy: "Powered by Quecumber",
     liveUpdates: "Real-time updates on your phone",
     step1: "Scan QR Code",
     step2: "Enter Your Details",
@@ -90,7 +90,7 @@ const STAND_TEXT: Record<
     scanSubtitle: "लाइव प्रतीक्षा समय अपडेट",
     instructionDefault:
       "तुरंत शामिल होने के ��िए अपने फ़ोन कैमरे को QR कोड पर इंगित करें।",
-    poweredBy: "EM Flow द्वारा संचालित",
+    poweredBy: "Quecumber द्वारा संचालित",
     liveUpdates: "आपके फ़ोन पर रियल-टाइम अपडेट",
     step1: "QR कोड स्कैन करें",
     step2: "अपना विवरण दर्ज करें",
@@ -101,7 +101,7 @@ const STAND_TEXT: Record<
     scanSubtitle: "நேரடி காத்திருப்பு நேர புதுப்பிப்புகள்",
     instructionDefault:
       "உடனடியாக சேர உங்கள் தொலைபேசி கேமராவை QR குறியீட்டில் காட்டுங்கள்.",
-    poweredBy: "EM Flow மூலம் இயக்கப்படுகிறது",
+    poweredBy: "Quecumber மூலம் இயக்கப்படுகிறது",
     liveUpdates: "உங்கள் தொலைபேசியில் நிகழ்நேர புதுப்பிப்புகள்",
     step1: "QR குறியீட்டை ஸ்கேன் செய்யுங்கள்",
     step2: "உங்கள் விவரங்களை உள்ளிடுங்கள்",
@@ -112,7 +112,7 @@ const STAND_TEXT: Record<
     scanSubtitle: "ലൈവ് കാത്തിരിപ്പ് സമയ അപ്ഡേറ്റുകള്‍",
     instructionDefault:
       "ഉടനടി ചേരാന്‍ നിങ്ങളുടെ ഫോണ്‍ ക്യാമറ QR കോഡിലേക്ക് ചൂണ്ടുക.",
-    poweredBy: "EM Flow നല്‍കുന്നത്",
+    poweredBy: "Quecumber നല്‍കുന്നത്",
     liveUpdates: "നിങ്ങളുടെ ഫോണില്‍ തത്സമയ അപ്ഡേറ്റുകള്‍",
     step1: "QR കോഡ് സ്കാന്‍ ചെയ്യുക",
     step2: "നിങ്ങളുടെ വിവരങ്ങള്‍ നല്‍കുക",
@@ -552,7 +552,7 @@ export function QRStandPage() {
 
   // Selected location for when no locationId in URL
   const [selectedLocationId, setSelectedLocationId] = useState(
-    locationId || ""
+    locationId || "",
   );
 
   // Load data
@@ -562,14 +562,14 @@ export function QRStandPage() {
       // Fetch business
       const { data: bizData } = await api<{ business: any }>(
         `/business/${businessId}`,
-        { accessToken }
+        { accessToken },
       );
       if (bizData?.business) setBusiness(bizData.business);
 
       // Fetch all locations
       const { data: locData } = await api<{ locations: any[] }>(
         `/business/${businessId}/locations`,
-        { accessToken }
+        { accessToken },
       );
       if (locData?.locations) {
         setLocations(locData.locations);
@@ -632,7 +632,7 @@ export function QRStandPage() {
       if (styleEl.textContent && styleEl.textContent.includes("oklch(")) {
         styleEl.textContent = styleEl.textContent.replace(
           /oklch\([^)]*\)/g,
-          "transparent"
+          "transparent",
         );
       }
     });
@@ -680,12 +680,16 @@ export function QRStandPage() {
       });
       const imgData = canvas.toDataURL("image/png", 1.0);
       // A4 portrait in mm: 210 x 297
-      const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+      const pdf = new jsPDF({
+        orientation: "portrait",
+        unit: "mm",
+        format: "a4",
+      });
       const pdfW = pdf.internal.pageSize.getWidth();
       const pdfH = pdf.internal.pageSize.getHeight();
       pdf.addImage(imgData, "PNG", 0, 0, pdfW, pdfH);
       pdf.save(
-        `qr-stand-${location?.slug || "emflow"}-${isDark ? "dark" : "light"}.pdf`
+        `qr-stand-${location?.slug || "emflow"}-${isDark ? "dark" : "light"}.pdf`,
       );
       toast.success(t("qr.downloadSuccess"));
     } catch (err) {
@@ -729,9 +733,7 @@ export function QRStandPage() {
               <QrCode className="h-6 w-6 text-primary" />
               {t("qr.title")}
             </h1>
-            <p className="text-muted-foreground text-sm">
-              {t("qr.subtitle")}
-            </p>
+            <p className="text-muted-foreground text-sm">{t("qr.subtitle")}</p>
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -835,10 +837,11 @@ export function QRStandPage() {
               <div className="flex gap-3">
                 <button
                   onClick={() => setIsDark(false)}
-                  className={`flex-1 rounded-xl border-2 p-3 transition-all ${!isDark
+                  className={`flex-1 rounded-xl border-2 p-3 transition-all ${
+                    !isDark
                       ? "border-primary ring-2 ring-primary/20"
                       : "border-border hover:border-muted-foreground/50"
-                    }`}
+                  }`}
                 >
                   <div className="h-16 rounded-lg bg-white border border-gray-200 mb-2 flex items-center justify-center">
                     <Sun className="h-5 w-5 text-amber-500" />
@@ -847,10 +850,11 @@ export function QRStandPage() {
                 </button>
                 <button
                   onClick={() => setIsDark(true)}
-                  className={`flex-1 rounded-xl border-2 p-3 transition-all ${isDark
+                  className={`flex-1 rounded-xl border-2 p-3 transition-all ${
+                    isDark
                       ? "border-primary ring-2 ring-primary/20"
                       : "border-border hover:border-muted-foreground/50"
-                    }`}
+                  }`}
                 >
                   <div className="h-16 rounded-lg bg-slate-900 border border-slate-700 mb-2 flex items-center justify-center">
                     <Moon className="h-5 w-5 text-slate-300" />
@@ -875,10 +879,11 @@ export function QRStandPage() {
                   <button
                     key={preset.value}
                     onClick={() => setAccentColor(preset.value)}
-                    className={`group flex flex-col items-center gap-1.5 rounded-lg p-2 transition-all ${accentColor === preset.value
+                    className={`group flex flex-col items-center gap-1.5 rounded-lg p-2 transition-all ${
+                      accentColor === preset.value
                         ? "ring-2 ring-primary bg-accent"
                         : "hover:bg-accent/50"
-                      }`}
+                    }`}
                   >
                     <div
                       className="h-8 w-8 rounded-full shadow-sm transition-transform group-hover:scale-110"
@@ -958,10 +963,7 @@ export function QRStandPage() {
                 <Label className="text-xs text-muted-foreground">
                   {t("qr.showSteps")}
                 </Label>
-                <Switch
-                  checked={showSteps}
-                  onCheckedChange={setShowSteps}
-                />
+                <Switch checked={showSteps} onCheckedChange={setShowSteps} />
               </div>
             </CardContent>
           </Card>

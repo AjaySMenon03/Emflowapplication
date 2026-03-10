@@ -1,5 +1,5 @@
 /**
- * EM Flow - SQL Schema Reference
+ * Quecumber - SQL Schema Reference
  *
  * This file documents the intended relational database schema.
  * In this prototype, data is stored in a KV store with structured keys.
@@ -253,7 +253,13 @@
 
 export type EntityStatus = "active" | "inactive" | "archived";
 export type UserRole = "owner" | "admin" | "staff";
-export type QueueEntryStatus = "waiting" | "next" | "serving" | "served" | "cancelled" | "no_show";
+export type QueueEntryStatus =
+  | "waiting"
+  | "next"
+  | "serving"
+  | "served"
+  | "cancelled"
+  | "no_show";
 export type SessionStatus = "open" | "closed" | "archived";
 export type NotificationChannel = "sms" | "whatsapp" | "email" | "push";
 

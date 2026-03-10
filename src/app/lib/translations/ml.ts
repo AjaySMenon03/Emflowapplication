@@ -9,8 +9,9 @@ export const ml: Record<string, string> = {
   "nav.reports": "റിപ്പോര്‍ട്ടുകള്‍ & വിശകലനം",
   "common.login": "ലോഗിന്‍",
   "common.logout": "ലോഗൗട്ട്",
-  "common.welcome": "EM Flow-ലേക്ക് സ്വാഗതം",
-  "common.description": "ആധുനിക ബിസിനസുകള്‍ക്കായുള്ള സ്മാര്‍ട്ട് ക്യൂ മാനേജ്മെന്‍റ്",
+  "common.welcome": "Quecumber-ലേക്ക് സ്വാഗതം",
+  "common.description":
+    "ആധുനിക ബിസിനസുകള്‍ക്കായുള്ള സ്മാര്‍ട്ട് ക്യൂ മാനേജ്മെന്‍റ്",
   "common.signup": "സൈന്‍ അപ്",
   "common.back": "പിന്നോട്ട്",
   "common.continue": "തുടരുക",
@@ -79,7 +80,8 @@ export const ml: Record<string, string> = {
   "queue.moveDown": "താഴേക്ക് നീക്കുക",
   "queue.reassign": "ജീവനക്കാരനെ മാറ്റുക",
   "queue.reassignTitle": "ജീവനക്കാരനെ മാറ്റല്‍",
-  "queue.reassignDesc": "ഈ ടിക്കറ്റ് കൈകാര്യം ചെയ്യാന്‍ ജീവനക്കാരനെ തിരഞ്ഞെടുക്കുക",
+  "queue.reassignDesc":
+    "ഈ ടിക്കറ്റ് കൈകാര്യം ചെയ്യാന്‍ ജീവനക്കാരനെ തിരഞ്ഞെടുക്കുക",
   "queue.current": "നിലവിലെ",
   "queue.noStaffAtLocation": "ഈ സ്ഥലത്ത് ജീവനക്കാര്‍ ഇല്ല",
   "queue.noCustomersWaiting": "ഉപഭോക്താക്കള്‍ കാത്തിരിക്കുന്നില്ല",
@@ -172,20 +174,26 @@ export const ml: Record<string, string> = {
   "settings.editStaffFullName": "പൂർണ്ണ നാമം",
   "settings.editStaffNamePlaceholder": "ജീവനക്കാരന്റെ പേര്",
   "settings.editStaffEmail": "ഇമെയിൽ",
-  "settings.editStaffEmailReadonly": "അക്കൗണ്ട് സൃഷ്ടിച്ചതിന് ശേഷം ഇമെയിൽ മാറ്റാൻ കഴിയില്ല",
+  "settings.editStaffEmailReadonly":
+    "അക്കൗണ്ട് സൃഷ്ടിച്ചതിന് ശേഷം ഇമെയിൽ മാറ്റാൻ കഴിയില്ല",
   "settings.editStaffCurrentRole": "നിലവിലെ റോൾ",
-  "settings.editStaffRoleHint": "സ്റ്റാഫ് ലിസ്റ്റിലെ ഡ്രോപ്ഡൗൺ ഉപയോഗിച്ച് റോൾ മാറ്റുക",
+  "settings.editStaffRoleHint":
+    "സ്റ്റാഫ് ലിസ്റ്റിലെ ഡ്രോപ്ഡൗൺ ഉപയോഗിച്ച് റോൾ മാറ്റുക",
   "settings.editStaffLocations": "നിയോഗിച്ച ലൊക്കേഷനുകൾ",
-  "settings.editStaffNoLocWarning": "ലൊക്കേഷനുകൾ നിയോഗിച്ചിട്ടില്ല — ജീവനക്കാരൻ ക്യൂ കാണില്ല",
+  "settings.editStaffNoLocWarning":
+    "ലൊക്കേഷനുകൾ നിയോഗിച്ചിട്ടില്ല — ജീവനക്കാരൻ ക്യൂ കാണില്ല",
   "settings.editStaffNameRequired": "പേര് ആവശ്യമാണ്",
-  "settings.editStaffSuccess": "ജീവനക്കാരന്റെ വിശദാംശങ്ങൾ വിജയകരമായി അപ്ഡേറ്റ് ചെയ്തു",
+  "settings.editStaffSuccess":
+    "ജീവനക്കാരന്റെ വിശദാംശങ്ങൾ വിജയകരമായി അപ്ഡേറ്റ് ചെയ്തു",
   "settings.editStaffSave": "മാറ്റങ്ങൾ സേവ് ചെയ്യുക",
   "settings.editStaffYou": "നിങ്ങൾ",
   "settings.deactivateTitle": "നിഷ്ക്രിയമാക്കുക",
-  "settings.deactivateDesc": "ഈ ജീവനക്കാരന് ഇനി സിസ്റ്റം ആക്സസ് ചെയ്യാൻ കഴിയില്ല. ഈ പ്രവർത്തനം പിന്നീട് മാറ്റാം.",
+  "settings.deactivateDesc":
+    "ഈ ജീവനക്കാരന് ഇനി സിസ്റ്റം ആക്സസ് ചെയ്യാൻ കഴിയില്ല. ഈ പ്രവർത്തനം പിന്നീട് മാറ്റാം.",
   "settings.deactivateAction": "നിഷ്ക്രിയമാക്കുക",
   "settings.resetPwTitle": "പാസ്‌വേഡ് റീസെറ്റ് ചെയ്യുക",
-  "settings.resetPwDesc": "ഈ ജീവനക്കാരന് പുതിയ പാസ്‌വേഡ് സജ്ജമാക്കുക. സൈൻ ഇൻ ചെയ്യാൻ ഈ പുതിയ പാസ്‌വേഡ് ഉപയോഗിക്കേണ്ടതുണ്ട്.",
+  "settings.resetPwDesc":
+    "ഈ ജീവനക്കാരന് പുതിയ പാസ്‌വേഡ് സജ്ജമാക്കുക. സൈൻ ഇൻ ചെയ്യാൻ ഈ പുതിയ പാസ്‌വേഡ് ഉപയോഗിക്കേണ്ടതുണ്ട്.",
   "settings.resetPwNewLabel": "പുതിയ പാസ്‌വേഡ്",
   "settings.resetPwPlaceholder": "പുതിയ പാസ്‌വേഡ് നൽകുക (കുറഞ്ഞത് 6 അക്ഷരങ്ങൾ)",
   "settings.resetPwMinLength": "പാസ്‌വേഡ് കുറഞ്ഞത് 6 അക്ഷരങ്ങൾ ഉണ്ടായിരിക്കണം",
@@ -211,12 +219,14 @@ export const ml: Record<string, string> = {
   "customer.viewHistory": "ചരിത്രം കാണുക",
   "customer.editProfile": "പ്രൊഫൈല്‍ തിരുത്തുക",
   "customer.noVisitsTitle": "സന്ദര്‍ശനങ്ങള്‍ ഇല്ല",
-  "customer.noVisitsDesc": "നിങ്ങളുടെ സന്ദര്‍ശന ചരിത്രം നിര്‍മ്മിക്കാന്‍ ക്യൂവില്‍ ചേരുക.",
+  "customer.noVisitsDesc":
+    "നിങ്ങളുടെ സന്ദര്‍ശന ചരിത്രം നിര്‍മ്മിക്കാന്‍ ക്യൂവില്‍ ചേരുക.",
   "customer.joinFirstQueue": "ആദ്യ ക്യൂവില്‍ ചേരുക",
   "customer.missYou": "ഞങ്ങള്‍ നിങ്ങളെ മിസ് ചെയ്യുന്നു! വീണ്ടും വരൂ.",
   "customer.lastVisitDaysAgo": "നിങ്ങളുടെ അവസാന സന്ദര്‍ശനം {days} ദിവസം മുമ്പ്",
   "customer.visitAgain": "വീണ്ടും വരൂ",
-  "customer.noShowReminder": "എത്തിച്ചേരല്‍ സമയത്തെക്കുറിച്ചുള്ള ഓര്‍മ്മപ്പെടുത്തല്‍",
+  "customer.noShowReminder":
+    "എത്തിച്ചേരല്‍ സമയത്തെക്കുറിച്ചുള്ള ഓര്‍മ്മപ്പെടുത്തല്‍",
   "customer.noShowReminderDesc": "വിളിക്കുമ്പോള്‍ സമയത്ത് എത്തുക.",
   "customer.historyTitle": "സന്ദര്‍ശന ചരിത്രം",
   "customer.totalEntries": "മൊത്തം സന്ദര്‍ശനങ്ങള്‍",
@@ -226,14 +236,17 @@ export const ml: Record<string, string> = {
   "customer.filterStartDate": "ആരംഭ തീയതി",
   "customer.filterEndDate": "അവസാന തീയതി",
   "customer.clearFilters": "ഫില്‍ട്ടറുകള്‍ മായ്ക്കുക",
-  "customer.noFilterResults": "നിങ്ങളുടെ ഫില്‍ട്ടറുകളുമായി പൊരുത്തപ്പെടുന്ന സന്ദര്‍ശനങ്ങളില്ല",
+  "customer.noFilterResults":
+    "നിങ്ങളുടെ ഫില്‍ട്ടറുകളുമായി പൊരുത്തപ്പെടുന്ന സന്ദര്‍ശനങ്ങളില്ല",
   "customer.waitTime": "കാത്തിരിപ്പ്",
   "customer.serviceTime": "സേവനം",
   "customer.showingRange": "{start}-{end} ഇല്‍ {total}",
   "customer.profileTitle": "നിങ്ങളുടെ പ്രൊഫൈല്‍",
-  "customer.profileSubtitle": "നിങ്ങളുടെ വ്യക്തിഗത വിവരങ്ങളും മുന്‍ഗണനകളും നിയന്ത്രിക്കുക",
+  "customer.profileSubtitle":
+    "നിങ്ങളുടെ വ്യക്തിഗത വിവരങ്ങളും മുന്‍ഗണനകളും നിയന്ത്രിക്കുക",
   "customer.personalInfo": "വ്യക്തിഗത വിവരങ്ങള്‍",
-  "customer.personalInfoDesc": "നിങ്ങളുടെ പേര്, ഫോണ്‍, ഭാഷ മുന്‍ഗണന അപ്ഡേറ്റ് ചെയ്യുക",
+  "customer.personalInfoDesc":
+    "നിങ്ങളുടെ പേര്, ഫോണ്‍, ഭാഷ മുന്‍ഗണന അപ്ഡേറ്റ് ചെയ്യുക",
   "customer.namePlaceholder": "നിങ്ങളുടെ മുഴുവന്‍ പേര്",
   "customer.readOnly": "വായിക്കാന്‍ മാത്രം",
   "customer.preferredLanguage": "മുന്‍ഗണന ഭാഷ",
@@ -246,7 +259,8 @@ export const ml: Record<string, string> = {
   // Advanced Analytics
   "nav.analytics": "അനലിറ്റിക്സ്",
   "analytics.title": "വിപുലമായ വിശകലനം",
-  "analytics.subtitle": "ആഴത്തിലുള്ള ഉള്‍ക്കാഴ്ചകള്‍, സ്റ്റാഫ് പ്രകടനം & പ്രവണത പ്രവചനങ്ങള്‍",
+  "analytics.subtitle":
+    "ആഴത്തിലുള്ള ഉള്‍ക്കാഴ്ചകള്‍, സ്റ്റാഫ് പ്രകടനം & പ്രവണത പ്രവചനങ്ങള്‍",
   "analytics.totalServed": "മൊത്തം സേവനം",
   "analytics.avgWait": "ശരാശരി കാത്തിരിപ്പ്",
   "analytics.avgService": "ശരാശരി സേവന സമയം",
@@ -258,23 +272,27 @@ export const ml: Record<string, string> = {
   "analytics.health_busy": "തിരക്ക്",
   "analytics.health_overloaded": "അമിതഭാരം",
   "analytics.howCalculated": "ഇത് എങ്ങനെ കണക്കാക്കുന്നു?",
-  "analytics.healthTooltip": "ശരാശരി കാത്തിരിപ്പ് സമയം vs 10 മിനിറ്റ് ലക്ഷ്യം (40%), വരാതിരിക്കല്‍ നിരക്ക് (30%), നിലവിലെ ലോഡ് vs ശരാശരി (30%) അടിസ്ഥാനത്തില്‍.",
+  "analytics.healthTooltip":
+    "ശരാശരി കാത്തിരിപ്പ് സമയം vs 10 മിനിറ്റ് ലക്ഷ്യം (40%), വരാതിരിക്കല്‍ നിരക്ക് (30%), നിലവിലെ ലോഡ് vs ശരാശരി (30%) അടിസ്ഥാനത്തില്‍.",
   "analytics.staffLeaderboard": "സ്റ്റാഫ് ലീഡര്‍ബോര്‍ഡ്",
-  "analytics.staffLeaderboardDesc": "കാര്യക്ഷമത സ്കോർ (സേവനം / ശരാശരി സേവന സമയം) പ്രകാരം",
+  "analytics.staffLeaderboardDesc":
+    "കാര്യക്ഷമത സ്കോർ (സേവനം / ശരാശരി സേവന സമയം) പ്രകാരം",
   "analytics.staff": "സ്റ്റാഫ്",
   "analytics.topPerformer": "ഏറ്റവും മികച്ച പ്രകടനം",
   "analytics.served": "സേവനം",
   "analytics.avgSvc": "ശരാ. സേവനം",
   "analytics.efficiency": "കാര്യക്ഷമത",
   "analytics.hourlyHeatmap": "മണിക്കൂര്‍ ഹീറ്റ്മാപ്പ്",
-  "analytics.heatmapDesc": "ആഴ്ചയിലെ ദിവസവും മണിക്കൂറും അനുസരിച്ച് ക്യൂ എന്‍ട്രി വോളിയം",
+  "analytics.heatmapDesc":
+    "ആഴ്ചയിലെ ദിവസവും മണിക്കൂറും അനുസരിച്ച് ക്യൂ എന്‍ട്രി വോളിയം",
   "analytics.less": "കുറവ്",
   "analytics.more": "കൂടുതല്‍",
   "analytics.serviceInsights": "സേവന ഉള്‍ക്കാഴ്ചകള്‍",
   "analytics.wait": "കാത്തിരിപ്പ്",
   "analytics.svc": "സേവനം",
   "analytics.trendTitle": "30 ദിവസ പ്രവണത",
-  "analytics.trendDesc": "7 ദിവസ ചലിക്കുന്ന ശരാശരിയോടൊപ്പം ദിവസേനയുള്ള സേവന എണ്ണം",
+  "analytics.trendDesc":
+    "7 ദിവസ ചലിക്കുന്ന ശരാശരിയോടൊപ്പം ദിവസേനയുള്ള സേവന എണ്ണം",
   "analytics.dailyServed": "ദൈനംദിന സേവനം",
   "analytics.sma7": "7 ദിവസ ശരാശരി",
   "analytics.avgWaitOverlay": "ശരാശരി കാത്തിരിപ്പ് (മിനിറ്റ്)",
@@ -285,12 +303,14 @@ export const ml: Record<string, string> = {
   "analytics.last30Days": "കഴിഞ്ഞ 30 ദിവസം",
   "analytics.custom": "ഇഷ്ടാനുസൃത ശ്രേണി",
   "analytics.restricted": "ആക്സസ് നിയന്ത്രിതം",
-  "analytics.restrictedDesc": "ഉടമകള്‍ക്കും അഡ്മിന്‍മാര്‍ക്കും മാത്രമേ വിപുലമായ വിശകലനം ആക്സസ് ചെയ്യാന്‍ കഴിയൂ.",
+  "analytics.restrictedDesc":
+    "ഉടമകള്‍ക്കും അഡ്മിന്‍മാര്‍ക്കും മാത്രമേ വിപുലമായ വിശകലനം ആക്സസ് ചെയ്യാന്‍ കഴിയൂ.",
 
   // QR Stand Generator
   "nav.qrStand": "QR സ്റ്റാന്‍ഡ്",
   "qr.title": "QR സ്റ്റാന്‍ഡ് ജനറേറ്റര്‍",
-  "qr.subtitle": "നിങ്ങളുടെ ലൊക്കേഷനുകള്‍ക്ക് പ്രീമിയം പ്രിന്‍റ് ചെയ്യാവുന്ന QR സ്റ്റാന്‍ഡുകള്‍ സൃഷ്ടിക്കുക",
+  "qr.subtitle":
+    "നിങ്ങളുടെ ലൊക്കേഷനുകള്‍ക്ക് പ്രീമിയം പ്രിന്‍റ് ചെയ്യാവുന്ന QR സ്റ്റാന്‍ഡുകള്‍ സൃഷ്ടിക്കുക",
   "qr.location": "ലൊക്കേഷന്‍",
   "qr.theme": "തീം",
   "qr.light": "ലൈറ്റ്",
@@ -299,7 +319,8 @@ export const ml: Record<string, string> = {
   "qr.customColor": "ഇഷ്ടാനുസൃതം",
   "qr.standLanguage": "സ്റ്റാന്‍ഡ് ഭാഷ",
   "qr.instruction": "ഇഷ്ടാനുസൃത നിര്‍ദ്ദേശം",
-  "qr.instructionDesc": "പ്രിന്‍റ് ചെയ്ത സ്റ്റാന്‍ഡില്‍ QR കോഡിന് താഴെ കാണിക്കുന്ന ടെക്സ്റ്ട്",
+  "qr.instructionDesc":
+    "പ്രിന്‍റ് ചെയ്ത സ്റ്റാന്‍ഡില്‍ QR കോഡിന് താഴെ കാണിക്കുന്ന ടെക്സ്റ്ട്",
   "qr.showSteps": "ഘട്ടം ഘട്ടമായുള്ള ഗൈഡ് കാണിക്കുക",
   "qr.preview": "ലൈവ് പ്രിവ്യൂ",
   "qr.downloadPNG": "PNG ഡൗണ്‍ലോഡ്",
@@ -309,22 +330,29 @@ export const ml: Record<string, string> = {
 
   // Offline Resilience
   "offline.banner": "ഓഫ്‌ലൈൻ മോഡ്. തത്സമയ അപ്‌ഡേറ്റുകൾ നിർത്തിവച്ചിരിക്കുന്നു.",
-  "offline.reconnecting": "വീണ്ടും ഓൺലൈൻ — ഏറ്റവും പുതിയ ഡാറ്റ സിങ്ക് ചെയ്യുന്നു...",
+  "offline.reconnecting":
+    "വീണ്ടും ഓൺലൈൻ — ഏറ്റവും പുതിയ ഡാറ്റ സിങ്ക് ചെയ്യുന്നു...",
   "offline.reconnected": "വീണ്ടും ബന്ധിപ്പിച്ചു",
   "offline.mutationBlocked": "ഓഫ്‌ലൈനിൽ ആയിരിക്കുമ്പോൾ ഈ പ്രവർത്തനം ലഭ്യമല്ല.",
   "offline.cachedData": "കാഷ് ചെയ്ത ഡാറ്റ കാണിക്കുന്നു",
   "offline.lastUpdated": "അവസാനം അപ്‌ഡേറ്റ് ചെയ്തത്",
   "offline.lastSynced": "അവസാന സിങ്ക്",
   "offline.pendingActions": "ക്യൂവിലുള്ള പ്രവർത്തനങ്ങൾ",
-  "offline.replayingActions": "വീണ്ടും ബന്ധിപ്പിച്ചു — {count} ക്യൂവിലുള്ള പ്രവർത്തനങ്ങൾ നടപ്പിലാക്കുന്നു...",
-  "offline.replaySuccess": "{succeeded} ക്യൂവിലുള്ള പ്രവർത്തനങ്ങൾ വിജയകരമായി നടപ്പിലാക്കി.",
-  "offline.replayPartial": "{total} ൽ {succeeded} പ്രവർത്തനങ്ങൾ നടപ്പിലാക്കി. {failed} പരാജയപ്പെട്ടു.",
+  "offline.replayingActions":
+    "വീണ്ടും ബന്ധിപ്പിച്ചു — {count} ക്യൂവിലുള്ള പ്രവർത്തനങ്ങൾ നടപ്പിലാക്കുന്നു...",
+  "offline.replaySuccess":
+    "{succeeded} ക്യൂവിലുള്ള പ്രവർത്തനങ്ങൾ വിജയകരമായി നടപ്പിലാക്കി.",
+  "offline.replayPartial":
+    "{total} ൽ {succeeded} പ്രവർത്തനങ്ങൾ നടപ്പിലാക്കി. {failed} പരാജയപ്പെട്ടു.",
   "offline.actionQueued": "ഓഫ്‌ലൈനിൽ ക്യൂവിൽ — ഓൺലൈനിൽ വരുമ്പോൾ അയയ്ക്കും.",
-  "offline.healthCheckFailed": "കണക്ഷൻ നഷ്ടപ്പെട്ടു — ആരോഗ്യ പരിശോധന പരാജയപ്പെട്ടു.",
+  "offline.healthCheckFailed":
+    "കണക്ഷൻ നഷ്ടപ്പെട്ടു — ആരോഗ്യ പരിശോധന പരാജയപ്പെട്ടു.",
   "offline.drawerTitle": "ക്യൂവിലുള്ള പ്രവർത്തനങ്ങൾ",
-  "offline.drawerDesc": "ഓഫ്‌ലൈനിൽ ചെയ്ത പ്രവർത്തനങ്ങൾ. ഓൺലൈനിൽ വരുമ്പോൾ സെർവറിലേക്ക് അയയ്ക്കും.",
+  "offline.drawerDesc":
+    "ഓഫ്‌ലൈനിൽ ചെയ്ത പ്രവർത്തനങ്ങൾ. ഓൺലൈനിൽ വരുമ്പോൾ സെർവറിലേക്ക് അയയ്ക്കും.",
   "offline.noQueuedActions": "ക്യൂവിൽ പ്രവർത്തനങ്ങളില്ല",
-  "offline.noQueuedActionsDesc": "ഓഫ്‌ലൈനിൽ ചെയ്യുന്ന പ്രവർത്തനങ്ങൾ ഇവിടെ കാണിക്കും.",
+  "offline.noQueuedActionsDesc":
+    "ഓഫ്‌ലൈനിൽ ചെയ്യുന്ന പ്രവർത്തനങ്ങൾ ഇവിടെ കാണിക്കും.",
   "offline.replayNow": "ഇപ്പോൾ നടപ്പിലാക്കുക",
   "offline.clearAllActions": "എല്ലാം നിരസിക്കുക",
   "offline.viewQueuedActions": "ക്യൂവിലുള്ള പ്രവർത്തനങ്ങൾ കാണുക",
@@ -333,9 +361,11 @@ export const ml: Record<string, string> = {
   "kiosk.loadingDisplay": "ഡിസ്‌പ്ലേ ലോഡ് ചെയ്യുന്നു...",
   "kiosk.navigateHint": "ഡിസ്‌പ്ലേ സജീവമാക്കാൻ കിയോസ്ക് URL-ലേക്ക് പോകുക.",
   "kiosk.staffLogin": "സ്റ്റാഫ് ലോഗിൻ",
-  "kiosk.staffLoginDesc": "ക്യൂ നിയന്ത്രണങ്ങൾ പ്രവർത്തനക്ഷമമാക്കാൻ നിങ്ങളുടെ സ്റ്റാഫ് ക്രെഡൻഷ്യലുകൾ ഉപയോഗിച്ച് സൈൻ ഇൻ ചെയ്യുക.",
+  "kiosk.staffLoginDesc":
+    "ക്യൂ നിയന്ത്രണങ്ങൾ പ്രവർത്തനക്ഷമമാക്കാൻ നിങ്ങളുടെ സ്റ്റാഫ് ക്രെഡൻഷ്യലുകൾ ഉപയോഗിച്ച് സൈൻ ഇൻ ചെയ്യുക.",
   "kiosk.signIn": "സൈൻ ഇൻ",
-  "kiosk.loginFailed": "ലോഗിൻ പരാജയപ്പെട്ടു. നിങ്ങളുടെ ക്രെഡൻഷ്യലുകൾ പരിശോധിക്കുക.",
+  "kiosk.loginFailed":
+    "ലോഗിൻ പരാജയപ്പെട്ടു. നിങ്ങളുടെ ക്രെഡൻഷ്യലുകൾ പരിശോധിക്കുക.",
   "kiosk.loginEmailPasswordRequired": "ഇമെയിലും പാസ്‌വേഡും ആവശ്യമാണ്.",
   "kiosk.enableStaffMode": "സ്റ്റാഫ് മോഡ് പ്രവർത്തനക്ഷമമാക്കുക",
   "kiosk.callNext": "അടുത്തയാളെ വിളിക്കുക",
@@ -353,7 +383,8 @@ export const ml: Record<string, string> = {
   "kiosk.enterPinToExit": "പുറത്തുകടക്കാൻ PIN നൽകുക",
   "kiosk.enter4DigitPin": "4-അക്ക കിയോസ്ക് PIN നൽകുക",
   "kiosk.invalidPin": "തെറ്റായ PIN. വീണ്ടും ശ്രമിക്കുക.",
-  "kiosk.noPinConfigured": "കിയോസ്ക് PIN ക്രമീകരിച്ചിട്ടില്ല. ലൊക്കേഷൻ ക്രമീകരണങ്ങളിൽ സജ്ജമാക്കുക.",
+  "kiosk.noPinConfigured":
+    "കിയോസ്ക് PIN ക്രമീകരിച്ചിട്ടില്ല. ലൊക്കേഷൻ ക്രമീകരണങ്ങളിൽ സജ്ജമാക്കുക.",
 
   // Emergency Controls
   "emergency.title": "അടിയന്തര നിയന്ത്രണങ്ങൾ",
@@ -361,32 +392,42 @@ export const ml: Record<string, string> = {
   "emergency.broadcasting": "പ്രക്ഷേപണം",
   "emergency.expand": "വിപുലീകരിക്കുക",
   "emergency.collapse": "ചുരുക്കുക",
-  "emergency.queuePausedBanner": "ക്യൂ താൽക്കാലികമായി നിർത്തി — പുതിയ ചേരലുകൾ തടഞ്ഞിരിക്കുന്നു",
+  "emergency.queuePausedBanner":
+    "ക്യൂ താൽക്കാലികമായി നിർത്തി — പുതിയ ചേരലുകൾ തടഞ്ഞിരിക്കുന്നു",
   "emergency.activeBroadcast": "സജീവ അറിയിപ്പ്",
   "emergency.pauseQueue": "ക്യൂ നിർത്തുക",
   "emergency.resumeQueue": "ക്യൂ തുടരുക",
   "emergency.closeQueue": "ക്യൂ അടയ്ക്കുക",
   "emergency.sendBroadcast": "പ്രക്ഷേപണം അയക്കുക",
   "emergency.broadcastMessage": "പ്രക്ഷേപണ സന്ദേശം",
-  "emergency.broadcastPlaceholder": "ഉപഭോക്തൃ പേജുകളിൽ കാണിക്കാൻ സന്ദേശം ടൈപ്പ് ചെയ്യുക...",
-  "emergency.pauseSuccess": "ക്യൂ നിർത്തി — പുതിയ ചേരലുകൾ ഇപ്പോൾ തടഞ്ഞിരിക്കുന്നു.",
+  "emergency.broadcastPlaceholder":
+    "ഉപഭോക്തൃ പേജുകളിൽ കാണിക്കാൻ സന്ദേശം ടൈപ്പ് ചെയ്യുക...",
+  "emergency.pauseSuccess":
+    "ക്യൂ നിർത്തി — പുതിയ ചേരലുകൾ ഇപ്പോൾ തടഞ്ഞിരിക്കുന്നു.",
   "emergency.resumeSuccess": "ക്യൂ തുടരുന്നു — ചേരലുകൾ തുറന്നിരിക്കുന്നു.",
-  "emergency.closeSuccess": "അടിയന്തര അടയ്ക്കൽ: {cancelled} എൻട്രികൾ റദ്ദാക്കി, {sessions} സെഷനുകൾ അടച്ചു.",
+  "emergency.closeSuccess":
+    "അടിയന്തര അടയ്ക്കൽ: {cancelled} എൻട്രികൾ റദ്ദാക്കി, {sessions} സെഷനുകൾ അടച്ചു.",
   "emergency.broadcastSuccess": "പ്രക്ഷേപണ അറിയിപ്പ് അയച്ചു.",
   "emergency.broadcastCleared": "പ്രക്ഷേപണ അറിയിപ്പ് മായ്ച്ചു.",
   "emergency.confirmPauseTitle": "ക്യൂ നിർത്തണോ?",
-  "emergency.confirmPauseDesc": "പുതിയ ഉപഭോക്താക്കൾക്ക് ചേരാൻ കഴിയില്ല. നിലവിലുള്ള എൻട്രികളെ ബാധിക്കില്ല.",
+  "emergency.confirmPauseDesc":
+    "പുതിയ ഉപഭോക്താക്കൾക്ക് ചേരാൻ കഴിയില്ല. നിലവിലുള്ള എൻട്രികളെ ബാധിക്കില്ല.",
   "emergency.confirmResumeTitle": "ക്യൂ വീണ്ടും ആരംഭിക്കണോ?",
-  "emergency.confirmResumeDesc": "പുതിയ ഉപഭോക്താക്കൾക്ക് ക്യൂവിൽ വീണ്ടും ചേരാം.",
+  "emergency.confirmResumeDesc":
+    "പുതിയ ഉപഭോക്താക്കൾക്ക് ക്യൂവിൽ വീണ്ടും ചേരാം.",
   "emergency.confirmCloseTitle": "അടിയന്തരമായി ക്യൂ അടയ്ക്കണോ?",
-  "emergency.confirmCloseDesc": "ഇത് എല്ലാ സെഷനുകളും ഉടനടി അടയ്ക്കുകയും കാത്തിരിക്കുന്ന എല്ലാ എൻട്രികളും റദ്ദാക്കുകയും ചെയ്യും. ഈ പ്രവൃത്തി പൂർവ്വാവസ്ഥയിലാക്കാൻ കഴിയില്ല.",
+  "emergency.confirmCloseDesc":
+    "ഇത് എല്ലാ സെഷനുകളും ഉടനടി അടയ്ക്കുകയും കാത്തിരിക്കുന്ന എല്ലാ എൻട്രികളും റദ്ദാക്കുകയും ചെയ്യും. ഈ പ്രവൃത്തി പൂർവ്വാവസ്ഥയിലാക്കാൻ കഴിയില്ല.",
   "emergency.confirmBroadcastTitle": "പ്രക്ഷേപണ അറിയിപ്പ് അയക്കണോ?",
-  "emergency.confirmBroadcastDesc": "ഈ സന്ദേശം എല്ലാ ഉപഭോക്താക്കൾക്കും കാണിക്കും: \"{message}\"",
+  "emergency.confirmBroadcastDesc":
+    'ഈ സന്ദേശം എല്ലാ ഉപഭോക്താക്കൾക്കും കാണിക്കും: "{message}"',
   "emergency.confirmClearBroadcastTitle": "പ്രക്ഷേപണ അറിയിപ്പ് മായ്ക്കണോ?",
-  "emergency.confirmClearBroadcastDesc": "എല്ലാ ഉപഭോക്തൃ പേജുകളിൽ നിന്നും അറിയിപ്പ് നീക്കം ചെയ്യപ്പെടും.",
+  "emergency.confirmClearBroadcastDesc":
+    "എല്ലാ ഉപഭോക്തൃ പേജുകളിൽ നിന്നും അറിയിപ്പ് നീക്കം ചെയ്യപ്പെടും.",
   "emergency.cancel": "റദ്ദാക്കുക",
   "emergency.confirm": "സ്ഥിരീകരിക്കുക",
   "emergency.joinPausedTitle": "ക്യൂ താൽക്കാലികമായി നിർത്തിയിരിക്കുന്നു",
-  "emergency.joinPausedMessage": "ഞങ്ങൾ താൽക്കാലികമായി പുതിയ വാക്ക്-ഇന്നുകൾ സ്വീകരിക്കുന്നില്ല. ദയവായി ഉടൻ വീണ്ടും പരിശോധിക്കുക.",
+  "emergency.joinPausedMessage":
+    "ഞങ്ങൾ താൽക്കാലികമായി പുതിയ വാക്ക്-ഇന്നുകൾ സ്വീകരിക്കുന്നില്ല. ദയവായി ഉടൻ വീണ്ടും പരിശോധിക്കുക.",
   "emergency.noticeLabel": "അറിയിപ്പ്",
 };

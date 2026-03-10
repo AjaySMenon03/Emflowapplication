@@ -54,6 +54,9 @@ const INDUSTRIES = ["Healthcare", "Saloon", "Hospitality"];
 
 const TIMEZONES = Intl.supportedValuesOf("timeZone");
 
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const PHONE_RE = /^\+?[\d\s\-()]{10,15}$/;
+
 export function OnboardingPage() {
   const navigate = useNavigate();
   const { session } = useAuthStore();
@@ -243,9 +246,24 @@ export function OnboardingPage() {
       case 1:
         if (!store.businessName.trim()) return "Business name is required";
         if (!store.ownerName.trim()) return "Your name is required";
+        if (
+          store.businessEmail.trim() &&
+          !EMAIL_RE.test(store.businessEmail.trim())
+        )
+          return "Enter a valid business email address";
+        if (
+          store.businessPhone.trim() &&
+          !PHONE_RE.test(store.businessPhone.trim())
+        )
+          return "Enter a valid business phone number (10\u201315 digits)";
         return null;
       case 2:
         if (!store.locationName.trim()) return "Location name is required";
+        if (
+          store.locationPhone.trim() &&
+          !PHONE_RE.test(store.locationPhone.trim())
+        )
+          return "Enter a valid location phone number (10\u201315 digits)";
         return null;
       case 3:
         if (store.queueTypes.length === 0) return "Add at least one queue type";
@@ -255,7 +273,21 @@ export function OnboardingPage() {
       case 5:
         if (store.whatsappEnabled && !store.whatsappPhone.trim())
           return "WhatsApp phone number required when enabled";
+        if (
+          store.whatsappEnabled &&
+          store.whatsappPhone.trim() &&
+          !PHONE_RE.test(store.whatsappPhone.trim())
+        )
+          return "Enter a valid WhatsApp phone number with country code (10\u201315 digits)";
         return null;
+      case 6: {
+        const badStaff = store.staffMembers.find(
+          (s) => s.email.trim() && !EMAIL_RE.test(s.email.trim()),
+        );
+        if (badStaff)
+          return `Invalid email for staff member: ${badStaff.email}`;
+        return null;
+      }
       default:
         return null;
     }
@@ -269,7 +301,7 @@ export function OnboardingPage() {
           <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary">
             <Zap className="h-5 w-5 text-primary-foreground" />
           </div>
-          <span className="text-lg text-foreground font-medium">EM Flow</span>
+          <span className="text-lg text-foreground font-medium">Quecumber</span>
           <span className="text-muted-foreground text-sm ml-2">
             Setup Wizard
           </span>
@@ -288,12 +320,13 @@ export function OnboardingPage() {
                 <div key={step.id} className="flex flex-1 items-center">
                   <div className="flex flex-col items-center gap-1.5">
                     <div
-                      className={`flex h-10 w-10 items-center justify-center rounded-full border-2 transition-all ${isCompleted
-                        ? "border-primary bg-primary text-primary-foreground"
-                        : isCurrent
-                          ? "border-primary bg-primary/10 text-primary"
-                          : "border-muted bg-muted/50 text-muted-foreground"
-                        }`}
+                      className={`flex h-10 w-10 items-center justify-center rounded-full border-2 transition-all ${
+                        isCompleted
+                          ? "border-primary bg-primary text-primary-foreground"
+                          : isCurrent
+                            ? "border-primary bg-primary/10 text-primary"
+                            : "border-muted bg-muted/50 text-muted-foreground"
+                      }`}
                     >
                       {isCompleted ? (
                         <Check className="h-4 w-4" />
@@ -302,18 +335,20 @@ export function OnboardingPage() {
                       )}
                     </div>
                     <span
-                      className={`text-xs text-center hidden sm:block ${isCurrent
-                        ? "text-primary font-medium"
-                        : "text-muted-foreground"
-                        }`}
+                      className={`text-xs text-center hidden sm:block ${
+                        isCurrent
+                          ? "text-primary font-medium"
+                          : "text-muted-foreground"
+                      }`}
                     >
                       {step.label}
                     </span>
                   </div>
                   {i < ONBOARDING_STEPS.length - 1 && (
                     <div
-                      className={`mx-2 h-0.5 flex-1 rounded-full ${store.currentStep > step.id ? "bg-primary" : "bg-muted"
-                        }`}
+                      className={`mx-2 h-0.5 flex-1 rounded-full ${
+                        store.currentStep > step.id ? "bg-primary" : "bg-muted"
+                      }`}
                     />
                   )}
                 </div>
@@ -374,6 +409,10 @@ export function OnboardingPage() {
 
 function StepBusiness() {
   const store = useOnboardingStore();
+  const [fieldErrors, setFieldErrors] = useState<{
+    phone?: string;
+    email?: string;
+  }>({});
   return (
     <div className="space-y-6">
       <div>
@@ -425,8 +464,25 @@ function StepBusiness() {
             type="tel"
             placeholder="+1 (555) 123-4567"
             value={store.businessPhone}
-            onChange={(e) => store.updateField("businessPhone", e.target.value)}
+            onChange={(e) => {
+              store.updateField("businessPhone", e.target.value);
+              setFieldErrors((p) => ({ ...p, phone: undefined }));
+            }}
+            onBlur={() => {
+              if (
+                store.businessPhone.trim() &&
+                !PHONE_RE.test(store.businessPhone.trim())
+              )
+                setFieldErrors((p) => ({
+                  ...p,
+                  phone: "Enter a valid phone number (10\u201315 digits)",
+                }));
+            }}
+            aria-invalid={!!fieldErrors.phone}
           />
+          {fieldErrors.phone && (
+            <p className="text-xs text-destructive mt-1">{fieldErrors.phone}</p>
+          )}
         </div>
         <div className="space-y-2">
           <Label>Email</Label>
@@ -434,8 +490,25 @@ function StepBusiness() {
             type="email"
             placeholder="info@acme.com"
             value={store.businessEmail}
-            onChange={(e) => store.updateField("businessEmail", e.target.value)}
+            onChange={(e) => {
+              store.updateField("businessEmail", e.target.value);
+              setFieldErrors((p) => ({ ...p, email: undefined }));
+            }}
+            onBlur={() => {
+              if (
+                store.businessEmail.trim() &&
+                !EMAIL_RE.test(store.businessEmail.trim())
+              )
+                setFieldErrors((p) => ({
+                  ...p,
+                  email: "Enter a valid email address",
+                }));
+            }}
+            aria-invalid={!!fieldErrors.email}
           />
+          {fieldErrors.email && (
+            <p className="text-xs text-destructive mt-1">{fieldErrors.email}</p>
+          )}
         </div>
         <div className="space-y-2 sm:col-span-2">
           <Label>Address</Label>
@@ -454,6 +527,7 @@ function StepBusiness() {
 
 function StepLocation() {
   const store = useOnboardingStore();
+  const [locationPhoneError, setLocationPhoneError] = useState("");
   return (
     <div className="space-y-6">
       <div>
@@ -487,8 +561,26 @@ function StepLocation() {
             type="tel"
             placeholder="+90 212 555 1234"
             value={store.locationPhone}
-            onChange={(e) => store.updateField("locationPhone", e.target.value)}
+            onChange={(e) => {
+              store.updateField("locationPhone", e.target.value);
+              setLocationPhoneError("");
+            }}
+            onBlur={() => {
+              if (
+                store.locationPhone.trim() &&
+                !PHONE_RE.test(store.locationPhone.trim())
+              )
+                setLocationPhoneError(
+                  "Enter a valid phone number (10\u201315 digits)",
+                );
+            }}
+            aria-invalid={!!locationPhoneError}
           />
+          {locationPhoneError && (
+            <p className="text-xs text-destructive mt-1">
+              {locationPhoneError}
+            </p>
+          )}
         </div>
         <div className="space-y-2">
           <Label>Country</Label>
@@ -653,8 +745,9 @@ function StepBusinessHours() {
                 }
               />
               <span
-                className={`text-sm ${bh.enabled ? "text-foreground" : "text-muted-foreground"
-                  }`}
+                className={`text-sm ${
+                  bh.enabled ? "text-foreground" : "text-muted-foreground"
+                }`}
               >
                 {bh.day}
               </span>
@@ -691,6 +784,7 @@ function StepBusinessHours() {
 
 function StepWhatsApp() {
   const store = useOnboardingStore();
+  const [whatsappPhoneError, setWhatsappPhoneError] = useState("");
   return (
     <div className="space-y-6">
       <div>
@@ -721,8 +815,26 @@ function StepWhatsApp() {
             type="tel"
             placeholder="+1234567890"
             value={store.whatsappPhone}
-            onChange={(e) => store.updateField("whatsappPhone", e.target.value)}
+            onChange={(e) => {
+              store.updateField("whatsappPhone", e.target.value);
+              setWhatsappPhoneError("");
+            }}
+            onBlur={() => {
+              if (
+                store.whatsappPhone.trim() &&
+                !PHONE_RE.test(store.whatsappPhone.trim())
+              )
+                setWhatsappPhoneError(
+                  "Enter a valid phone number with country code (10\u201315 digits)",
+                );
+            }}
+            aria-invalid={!!whatsappPhoneError}
           />
+          {whatsappPhoneError && (
+            <p className="text-xs text-destructive mt-1">
+              {whatsappPhoneError}
+            </p>
+          )}
           <p className="text-xs text-muted-foreground">
             The phone number connected to your WhatsApp Business account.
           </p>
@@ -734,6 +846,9 @@ function StepWhatsApp() {
 
 function StepStaff() {
   const store = useOnboardingStore();
+  const [staffEmailErrors, setStaffEmailErrors] = useState<
+    Record<number, string>
+  >({});
   return (
     <div className="space-y-6">
       <div className="flex items-start justify-between">
@@ -797,10 +912,28 @@ function StepStaff() {
                     type="email"
                     placeholder="jane@example.com"
                     value={sm.email}
-                    onChange={(e) =>
-                      store.updateStaffMember(i, "email", e.target.value)
-                    }
+                    onChange={(e) => {
+                      store.updateStaffMember(i, "email", e.target.value);
+                      setStaffEmailErrors((p) => {
+                        const n = { ...p };
+                        delete n[i];
+                        return n;
+                      });
+                    }}
+                    onBlur={() => {
+                      if (sm.email.trim() && !EMAIL_RE.test(sm.email.trim()))
+                        setStaffEmailErrors((p) => ({
+                          ...p,
+                          [i]: "Enter a valid email address",
+                        }));
+                    }}
+                    aria-invalid={!!staffEmailErrors[i]}
                   />
+                  {staffEmailErrors[i] && (
+                    <p className="text-xs text-destructive mt-1">
+                      {staffEmailErrors[i]}
+                    </p>
+                  )}
                 </div>
                 <div className="space-y-1">
                   <Label className="text-xs">Role</Label>

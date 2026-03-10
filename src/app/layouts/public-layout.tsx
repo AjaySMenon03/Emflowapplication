@@ -23,7 +23,7 @@ export function PublicLayout() {
             <Zap className="h-4 w-4 text-primary-foreground" />
           </div>
           <span className="font-semibold text-foreground tracking-tight">
-            EM Flow
+            Quecumber
           </span>
         </Link>
 
@@ -41,7 +41,7 @@ export function PublicLayout() {
       {/* Footer */}
       <footer className="border-t border-border px-6 py-4 bg-background">
         <p className="text-center text-xs text-muted-foreground">
-          &copy; 2026 EM Flow. All rights reserved.
+          &copy; 2026 Quecumber. All rights reserved.
         </p>
       </footer>
     </div>

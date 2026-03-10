@@ -1,6 +1,6 @@
 {
-  "name": "EM Flow — Queue Management",
-  "short_name": "EM Flow",
+  "name": "Quecumber — Queue Management",
+  "short_name": "Quecumber",
   "description": "Smart Queue Management for Modern Businesses. Join queues, track your position, and get notified when it's your turn.",
   "start_url": "/",
   "display": "standalone",

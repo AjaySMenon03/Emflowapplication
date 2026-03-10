@@ -20,7 +20,7 @@ export function AuthGuard() {
             <Zap className="h-6 w-6 text-primary-foreground" />
           </div>
           <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-          <p className="text-muted-foreground text-sm">Loading EM Flow...</p>
+          <p className="text-muted-foreground text-sm">Loading Quecumber...</p>
         </div>
       </div>
     );

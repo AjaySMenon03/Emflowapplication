@@ -1,5 +1,5 @@
 /**
- * EM Flow — Queue Logic Barrel Re-export
+ * Quecumber — Queue Logic Barrel Re-export
  *
  * This file re-exports everything from the queue submodules so that
  * consumers can simply do:

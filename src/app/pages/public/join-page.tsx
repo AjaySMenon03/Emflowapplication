@@ -108,6 +108,14 @@ export function JoinPage() {
   const [services, setServices] = useState<Service[]>([]);
   const [selectedServiceId, setSelectedServiceId] = useState("");
   const [exhaustedServiceIds, setExhaustedServiceIds] = useState<string[]>([]);
+  const [fieldErrors, setFieldErrors] = useState<{
+    name?: string;
+    phone?: string;
+    email?: string;
+  }>({});
+
+  const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  const PHONE_RE = /^\+?[\d\s\-()]{10,15}$/;
 
   // Auto-fill from customer profile if authenticated
   useEffect(() => {
@@ -202,10 +210,20 @@ export function JoinPage() {
     e.preventDefault();
     setError("");
 
-    if (!name.trim()) {
-      setError("Please enter your name");
+    const errs: { name?: string; phone?: string; email?: string } = {};
+    if (!name.trim()) errs.name = "Name is required";
+    else if (name.trim().length < 2)
+      errs.name = "Name must be at least 2 characters";
+    if (phone.trim() && !PHONE_RE.test(phone.trim()))
+      errs.phone = "Enter a valid phone number (10–15 digits)";
+    if (email.trim() && !EMAIL_RE.test(email.trim()))
+      errs.email = "Enter a valid email address";
+    if (Object.keys(errs).length) {
+      setFieldErrors(errs);
       return;
     }
+    setFieldErrors({});
+
     if (!selectedServiceId) {
       setError("Please select a service");
       return;
@@ -286,7 +304,7 @@ export function JoinPage() {
               <Zap className="h-4 w-4 text-primary-foreground" />
             </div>
             <span className="text-sm font-medium text-foreground">
-              {businessName || "EM Flow"}
+              {businessName || "Quecumber"}
             </span>
           </div>
           {/* Language switcher */}
@@ -547,10 +565,30 @@ export function JoinPage() {
                   id="join-name"
                   placeholder="Your name"
                   value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  required
+                  onChange={(e) => {
+                    setName(e.target.value);
+                    setFieldErrors((p) => ({ ...p, name: undefined }));
+                  }}
+                  onBlur={() => {
+                    if (!name.trim())
+                      setFieldErrors((p) => ({
+                        ...p,
+                        name: "Name is required",
+                      }));
+                    else if (name.trim().length < 2)
+                      setFieldErrors((p) => ({
+                        ...p,
+                        name: "Name must be at least 2 characters",
+                      }));
+                  }}
+                  aria-invalid={!!fieldErrors.name}
                   autoFocus
                 />
+                {fieldErrors.name && (
+                  <p className="text-xs text-destructive mt-1">
+                    {fieldErrors.name}
+                  </p>
+                )}
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="join-phone" className="text-xs">
@@ -561,8 +599,24 @@ export function JoinPage() {
                   type="tel"
                   placeholder="+1 (555) 000-0000"
                   value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
+                  onChange={(e) => {
+                    setPhone(e.target.value);
+                    setFieldErrors((p) => ({ ...p, phone: undefined }));
+                  }}
+                  onBlur={() => {
+                    if (phone.trim() && !PHONE_RE.test(phone.trim()))
+                      setFieldErrors((p) => ({
+                        ...p,
+                        phone: "Enter a valid phone number (10–15 digits)",
+                      }));
+                  }}
+                  aria-invalid={!!fieldErrors.phone}
                 />
+                {fieldErrors.phone && (
+                  <p className="text-xs text-destructive mt-1">
+                    {fieldErrors.phone}
+                  </p>
+                )}
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="join-email" className="text-xs">
@@ -573,8 +627,24 @@ export function JoinPage() {
                   type="email"
                   placeholder="you@example.com"
                   value={email}
-                  onChange={(e) => setEmail(e.target.value)}
+                  onChange={(e) => {
+                    setEmail(e.target.value);
+                    setFieldErrors((p) => ({ ...p, email: undefined }));
+                  }}
+                  onBlur={() => {
+                    if (email.trim() && !EMAIL_RE.test(email.trim()))
+                      setFieldErrors((p) => ({
+                        ...p,
+                        email: "Enter a valid email address",
+                      }));
+                  }}
+                  aria-invalid={!!fieldErrors.email}
                 />
+                {fieldErrors.email && (
+                  <p className="text-xs text-destructive mt-1">
+                    {fieldErrors.email}
+                  </p>
+                )}
               </div>
             </CardContent>
           </Card>

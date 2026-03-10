@@ -1,5 +1,5 @@
 /**
- * EM Flow — Waitlist Promotion
+ * Quecumber — Waitlist Promotion
  */
 
 import * as kv from "../kv_store.tsx";
@@ -133,7 +133,8 @@ export async function promoteFromWaitlist(
           const twilioSid = Deno.env.get("TWILIO_ACCOUNT_SID");
           const twilioToken = Deno.env.get("TWILIO_AUTH_TOKEN");
           if (twilioSid && twilioToken) {
-            const trackingLink = `http://localhost:5173/status/${entry.id}`;
+            const siteUrl = Deno.env.get("SITE_URL") || "http://localhost:5173";
+            const trackingLink = `${siteUrl}/status/${entry.id}`;
             const messageBody = `Good news, ${entry.customer_name || "Customer"}! Your ticket is now CONFIRMED.\n\n Ticket Number: ${entry.ticket_number}\n Position: #1\n ETA: ~${eta.estimatedMinutes} min\n\n Track here:\n${trackingLink}`;
             await fetch(
               `https://api.twilio.com/2010-04-01/Accounts/${twilioSid}/Messages.json`,

@@ -1,5 +1,5 @@
 /**
- * EM Flow — Queue Entry Creation & Position Helpers
+ * Quecumber — Queue Entry Creation & Position Helpers
  */
 
 import * as kv from "../kv_store.tsx";

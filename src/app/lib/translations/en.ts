@@ -12,7 +12,7 @@ export const en: Record<string, string> = {
   // Common
   "common.login": "Login",
   "common.logout": "Logout",
-  "common.welcome": "Welcome to EM Flow",
+  "common.welcome": "Welcome to Quecumber",
   "common.description": "Smart Queue Management for Modern Businesses",
   "common.signup": "Sign Up",
   "common.back": "Back",
@@ -212,20 +212,25 @@ export const en: Record<string, string> = {
   "settings.editStaffFullName": "Full Name",
   "settings.editStaffNamePlaceholder": "Staff member name",
   "settings.editStaffEmail": "Email",
-  "settings.editStaffEmailReadonly": "Email cannot be changed after account creation",
+  "settings.editStaffEmailReadonly":
+    "Email cannot be changed after account creation",
   "settings.editStaffCurrentRole": "Current Role",
-  "settings.editStaffRoleHint": "Change role using the dropdown in the staff list",
+  "settings.editStaffRoleHint":
+    "Change role using the dropdown in the staff list",
   "settings.editStaffLocations": "Assigned Locations",
-  "settings.editStaffNoLocWarning": "No locations assigned — staff won't see any queues",
+  "settings.editStaffNoLocWarning":
+    "No locations assigned — staff won't see any queues",
   "settings.editStaffNameRequired": "Name is required",
   "settings.editStaffSuccess": "Staff details updated successfully",
   "settings.editStaffSave": "Save Changes",
   "settings.editStaffYou": "You",
   "settings.deactivateTitle": "Deactivate",
-  "settings.deactivateDesc": "This staff member will no longer be able to access the system. This action can be undone later.",
+  "settings.deactivateDesc":
+    "This staff member will no longer be able to access the system. This action can be undone later.",
   "settings.deactivateAction": "Deactivate",
   "settings.resetPwTitle": "Reset Password",
-  "settings.resetPwDesc": "Set a new password for this staff member. They will need to use this new password to sign in.",
+  "settings.resetPwDesc":
+    "Set a new password for this staff member. They will need to use this new password to sign in.",
   "settings.resetPwNewLabel": "New Password",
   "settings.resetPwPlaceholder": "Enter new password (min. 6 characters)",
   "settings.resetPwMinLength": "Password must be at least 6 characters",
@@ -251,13 +256,15 @@ export const en: Record<string, string> = {
   "customer.viewHistory": "View History",
   "customer.editProfile": "Edit Profile",
   "customer.noVisitsTitle": "No visits yet",
-  "customer.noVisitsDesc": "Join a queue to start building your visit history and see your analytics.",
+  "customer.noVisitsDesc":
+    "Join a queue to start building your visit history and see your analytics.",
   "customer.joinFirstQueue": "Join Your First Queue",
   "customer.missYou": "We miss you! Visit again soon.",
   "customer.lastVisitDaysAgo": "Your last visit was {days} days ago",
   "customer.visitAgain": "Visit Again",
   "customer.noShowReminder": "Friendly reminder about arrival timing",
-  "customer.noShowReminderDesc": "Please arrive promptly when called to avoid being marked as no-show.",
+  "customer.noShowReminderDesc":
+    "Please arrive promptly when called to avoid being marked as no-show.",
   "customer.historyTitle": "Visit History",
   "customer.totalEntries": "total visits",
   "customer.noHistory": "No visits recorded yet",
@@ -271,9 +278,11 @@ export const en: Record<string, string> = {
   "customer.serviceTime": "Service",
   "customer.showingRange": "{start}-{end} of {total}",
   "customer.profileTitle": "Your Profile",
-  "customer.profileSubtitle": "Manage your personal information and preferences",
+  "customer.profileSubtitle":
+    "Manage your personal information and preferences",
   "customer.personalInfo": "Personal Information",
-  "customer.personalInfoDesc": "Update your name, phone, and language preference",
+  "customer.personalInfoDesc":
+    "Update your name, phone, and language preference",
   "customer.namePlaceholder": "Your full name",
   "customer.readOnly": "read-only",
   "customer.preferredLanguage": "Preferred Language",
@@ -298,9 +307,11 @@ export const en: Record<string, string> = {
   "analytics.health_busy": "Busy",
   "analytics.health_overloaded": "Overloaded",
   "analytics.howCalculated": "How is this calculated?",
-  "analytics.healthTooltip": "Based on avg wait time vs 10min target (40%), no-show rate (30%), and current load vs average (30%).",
+  "analytics.healthTooltip":
+    "Based on avg wait time vs 10min target (40%), no-show rate (30%), and current load vs average (30%).",
   "analytics.staffLeaderboard": "Staff Leaderboard",
-  "analytics.staffLeaderboardDesc": "Ranked by efficiency score (served / avg service time)",
+  "analytics.staffLeaderboardDesc":
+    "Ranked by efficiency score (served / avg service time)",
   "analytics.staff": "staff",
   "analytics.topPerformer": "Top Performer",
   "analytics.served": "served",
@@ -325,7 +336,8 @@ export const en: Record<string, string> = {
   "analytics.last30Days": "Last 30 Days",
   "analytics.custom": "Custom Range",
   "analytics.restricted": "Access Restricted",
-  "analytics.restrictedDesc": "Only owners and admins can access advanced analytics.",
+  "analytics.restrictedDesc":
+    "Only owners and admins can access advanced analytics.",
 
   // QR Stand Generator
   "nav.qrStand": "QR Stand",
@@ -356,15 +368,19 @@ export const en: Record<string, string> = {
   "offline.lastUpdated": "Last updated",
   "offline.lastSynced": "Last synced",
   "offline.pendingActions": "queued actions",
-  "offline.replayingActions": "Reconnected — replaying {count} queued actions...",
+  "offline.replayingActions":
+    "Reconnected — replaying {count} queued actions...",
   "offline.replaySuccess": "Replayed {succeeded} queued actions successfully.",
-  "offline.replayPartial": "Replayed {succeeded} of {total} actions. {failed} failed.",
+  "offline.replayPartial":
+    "Replayed {succeeded} of {total} actions. {failed} failed.",
   "offline.actionQueued": "Queued offline — will send when back online.",
   "offline.healthCheckFailed": "Connection lost — health check failed.",
   "offline.drawerTitle": "Queued Actions",
-  "offline.drawerDesc": "Actions performed while offline. They'll be sent to the server when you're back online.",
+  "offline.drawerDesc":
+    "Actions performed while offline. They'll be sent to the server when you're back online.",
   "offline.noQueuedActions": "No queued actions",
-  "offline.noQueuedActionsDesc": "Actions performed while offline will appear here.",
+  "offline.noQueuedActionsDesc":
+    "Actions performed while offline will appear here.",
   "offline.replayNow": "Replay Now",
   "offline.clearAllActions": "Discard All",
   "offline.viewQueuedActions": "View queued actions",
@@ -373,7 +389,8 @@ export const en: Record<string, string> = {
   "kiosk.loadingDisplay": "Loading display...",
   "kiosk.navigateHint": "Navigate to the kiosk URL to activate the display.",
   "kiosk.staffLogin": "Staff Login",
-  "kiosk.staffLoginDesc": "Sign in with your staff credentials to enable queue controls.",
+  "kiosk.staffLoginDesc":
+    "Sign in with your staff credentials to enable queue controls.",
   "kiosk.signIn": "Sign In",
   "kiosk.loginFailed": "Login failed. Please check your credentials.",
   "kiosk.loginEmailPasswordRequired": "Email and password are required.",
@@ -393,7 +410,8 @@ export const en: Record<string, string> = {
   "kiosk.enterPinToExit": "Enter PIN to Exit",
   "kiosk.enter4DigitPin": "Enter 4-digit kiosk PIN",
   "kiosk.invalidPin": "Invalid PIN. Please try again.",
-  "kiosk.noPinConfigured": "No kiosk PIN configured. Set one in location settings.",
+  "kiosk.noPinConfigured":
+    "No kiosk PIN configured. Set one in location settings.",
 
   // Emergency Controls
   "emergency.title": "Emergency Controls",
@@ -408,25 +426,33 @@ export const en: Record<string, string> = {
   "emergency.closeQueue": "Close Queue",
   "emergency.sendBroadcast": "Send Broadcast",
   "emergency.broadcastMessage": "Broadcast message",
-  "emergency.broadcastPlaceholder": "Type a message to display on customer pages...",
+  "emergency.broadcastPlaceholder":
+    "Type a message to display on customer pages...",
   "emergency.pauseSuccess": "Queue paused — new joins are now blocked.",
   "emergency.resumeSuccess": "Queue resumed — joins are now open.",
-  "emergency.closeSuccess": "Emergency close: {cancelled} entries cancelled, {sessions} sessions closed.",
+  "emergency.closeSuccess":
+    "Emergency close: {cancelled} entries cancelled, {sessions} sessions closed.",
   "emergency.broadcastSuccess": "Broadcast notice sent.",
   "emergency.broadcastCleared": "Broadcast notice cleared.",
   "emergency.confirmPauseTitle": "Pause Queue?",
-  "emergency.confirmPauseDesc": "This will prevent new customers from joining. Existing entries will not be affected. You can resume at any time.",
+  "emergency.confirmPauseDesc":
+    "This will prevent new customers from joining. Existing entries will not be affected. You can resume at any time.",
   "emergency.confirmResumeTitle": "Resume Queue?",
-  "emergency.confirmResumeDesc": "This will allow new customers to join the queue again.",
+  "emergency.confirmResumeDesc":
+    "This will allow new customers to join the queue again.",
   "emergency.confirmCloseTitle": "Emergency Close Queue?",
-  "emergency.confirmCloseDesc": "This will immediately close all active sessions and cancel ALL waiting entries. This action cannot be undone. Entries currently being served will not be affected.",
+  "emergency.confirmCloseDesc":
+    "This will immediately close all active sessions and cancel ALL waiting entries. This action cannot be undone. Entries currently being served will not be affected.",
   "emergency.confirmBroadcastTitle": "Send Broadcast Notice?",
-  "emergency.confirmBroadcastDesc": "This message will be displayed to all customers on the join page and status page: \"{message}\"",
+  "emergency.confirmBroadcastDesc":
+    'This message will be displayed to all customers on the join page and status page: "{message}"',
   "emergency.confirmClearBroadcastTitle": "Clear Broadcast Notice?",
-  "emergency.confirmClearBroadcastDesc": "The broadcast notice will be removed from all customer-facing pages.",
+  "emergency.confirmClearBroadcastDesc":
+    "The broadcast notice will be removed from all customer-facing pages.",
   "emergency.cancel": "Cancel",
   "emergency.confirm": "Confirm",
   "emergency.joinPausedTitle": "Queue Temporarily Paused",
-  "emergency.joinPausedMessage": "We're temporarily not accepting new walk-ins. Please check back shortly.",
+  "emergency.joinPausedMessage":
+    "We're temporarily not accepting new walk-ins. Please check back shortly.",
   "emergency.noticeLabel": "Notice",
 };

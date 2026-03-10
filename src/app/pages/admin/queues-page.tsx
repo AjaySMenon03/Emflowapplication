@@ -218,6 +218,11 @@ export function QueuesPage() {
   const [walkInPhone, setWalkInPhone] = useState("");
   const [walkInServiceId, setWalkInServiceId] = useState("");
   const [isSubmittingWalkIn, setIsSubmittingWalkIn] = useState(false);
+  const [walkInErrors, setWalkInErrors] = useState<{
+    name?: string;
+    phone?: string;
+  }>({});
+  const WALKIN_PHONE_RE = /^\+?[\d\s\-()]{10,15}$/;
 
   // Derived: block walk-in if daily limit hit OR every compatible counter is unavailable
   const isWalkInBlocked =
@@ -930,13 +935,13 @@ export function QueuesPage() {
         </Card>
 
         {/* ── Emergency Controls (owner only) ── */}
-        {myRole === "owner" && selectedLocation && accessToken && (
+        {/* {myRole === "owner" && selectedLocation && accessToken && (
           <EmergencyControlsPanel
             locationId={selectedLocation}
             accessToken={accessToken}
             onStateChange={fetchEntries}
           />
-        )}
+        )} */}
 
         {/* ── Messages ── */}
         {error && (
@@ -1125,12 +1130,24 @@ export function QueuesPage() {
             <form
               onSubmit={async (e) => {
                 e.preventDefault();
-                if (!walkInName.trim()) {
-                  toast.error("Please enter a name");
-                  return;
-                }
+                const errs: { name?: string; phone?: string } = {};
+                if (!walkInName.trim()) errs.name = "Customer name is required";
+                if (
+                  walkInPhone.trim() &&
+                  !WALKIN_PHONE_RE.test(walkInPhone.trim())
+                )
+                  errs.phone = "Enter a valid phone number (10–15 digits)";
                 if (!walkInServiceId) {
                   toast.error("Please select a service");
+                  return;
+                }
+                if (Object.keys(errs).length) {
+                  setWalkInErrors(errs);
+                  return;
+                }
+                setWalkInErrors({});
+                if (!walkInName.trim()) {
+                  toast.error("Please enter a name");
                   return;
                 }
 
@@ -1159,6 +1176,7 @@ export function QueuesPage() {
                     setWalkInName("");
                     setWalkInPhone("");
                     setWalkInServiceId("");
+                    setWalkInErrors({});
                     fetchEntries();
                   }
                 } catch (err) {
@@ -1177,10 +1195,25 @@ export function QueuesPage() {
                     className="flex h-10 w-full rounded-md border border-input bg-background px-9 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                     placeholder="Enter name"
                     value={walkInName}
-                    onChange={(e) => setWalkInName(e.target.value)}
-                    required
+                    onChange={(e) => {
+                      setWalkInName(e.target.value);
+                      setWalkInErrors((p) => ({ ...p, name: undefined }));
+                    }}
+                    onBlur={() => {
+                      if (!walkInName.trim())
+                        setWalkInErrors((p) => ({
+                          ...p,
+                          name: "Customer name is required",
+                        }));
+                    }}
+                    aria-invalid={!!walkInErrors.name}
                   />
                 </div>
+                {walkInErrors.name && (
+                  <p className="text-xs text-destructive mt-1">
+                    {walkInErrors.name}
+                  </p>
+                )}
               </div>
 
               <div className="space-y-2">
@@ -1193,10 +1226,29 @@ export function QueuesPage() {
                     className="flex h-10 w-full rounded-md border border-input bg-background px-9 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                     placeholder="Enter phone number"
                     value={walkInPhone}
-                    onChange={(e) => setWalkInPhone(e.target.value)}
+                    onChange={(e) => {
+                      setWalkInPhone(e.target.value);
+                      setWalkInErrors((p) => ({ ...p, phone: undefined }));
+                    }}
+                    onBlur={() => {
+                      if (
+                        walkInPhone.trim() &&
+                        !WALKIN_PHONE_RE.test(walkInPhone.trim())
+                      )
+                        setWalkInErrors((p) => ({
+                          ...p,
+                          phone: "Enter a valid phone number (10–15 digits)",
+                        }));
+                    }}
+                    aria-invalid={!!walkInErrors.phone}
                     type="tel"
                   />
                 </div>
+                {walkInErrors.phone && (
+                  <p className="text-xs text-destructive mt-1">
+                    {walkInErrors.phone}
+                  </p>
+                )}
               </div>
 
               <div className="space-y-2">

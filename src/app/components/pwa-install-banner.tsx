@@ -62,13 +62,18 @@ export function PWAInstallBanner() {
             </div>
             <div className="flex-1 min-w-0">
               <h3 className="font-semibold text-foreground text-sm">
-                Install EM Flow
+                Install Quecumber
               </h3>
               <p className="text-xs text-muted-foreground mt-0.5">
-                Add to home screen for the best experience — faster access, offline support & push notifications.
+                Add to home screen for the best experience — faster access,
+                offline support & push notifications.
               </p>
               <div className="flex items-center gap-2 mt-2.5">
-                <Button size="sm" onClick={handleInstall} className="h-8 text-xs gap-1.5">
+                <Button
+                  size="sm"
+                  onClick={handleInstall}
+                  className="h-8 text-xs gap-1.5"
+                >
                   <Download className="h-3.5 w-3.5" />
                   Install App
                 </Button>
@@ -99,7 +104,8 @@ export function PWAInstallBanner() {
                 Enable Notifications
               </h3>
               <p className="text-xs text-muted-foreground mt-0.5">
-                Get notified instantly when it's your turn — never miss your call.
+                Get notified instantly when it's your turn — never miss your
+                call.
               </p>
               <div className="flex items-center gap-2 mt-2.5">
                 <Button

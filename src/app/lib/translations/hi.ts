@@ -9,7 +9,7 @@ export const hi: Record<string, string> = {
   "nav.reports": "रिपोर्ट और विश्लेषण",
   "common.login": "लॉग इन",
   "common.logout": "लॉग आउट",
-  "common.welcome": "EM Flow में आपका स्वागत है",
+  "common.welcome": "Quecumber में आपका स्वागत है",
   "common.description": "आधुनिक व्यवसायों के लिए स्मार्ट कतार प्रबंधन",
   "common.signup": "साइन अप",
   "common.back": "वापस",
@@ -176,16 +176,19 @@ export const hi: Record<string, string> = {
   "settings.editStaffCurrentRole": "वर्तमान भूमिका",
   "settings.editStaffRoleHint": "स्टाफ सूची में ड्रॉपडाउन से भूमिका बदलें",
   "settings.editStaffLocations": "निर्दिष्ट स्थान",
-  "settings.editStaffNoLocWarning": "कोई स्थान निर्दिष्ट नहीं — स्टाफ कोई कतार नहीं देखेगा",
+  "settings.editStaffNoLocWarning":
+    "कोई स्थान निर्दिष्ट नहीं — स्टाफ कोई कतार नहीं देखेगा",
   "settings.editStaffNameRequired": "नाम आवश्यक है",
   "settings.editStaffSuccess": "स्टाफ विवरण सफलतापूर्वक अपडेट किए गए",
   "settings.editStaffSave": "परिवर्तन सहेजें",
   "settings.editStaffYou": "आप",
   "settings.deactivateTitle": "निष्क्रिय करें",
-  "settings.deactivateDesc": "यह स्टाफ सदस्य अब सिस्टम तक पहुंच नहीं पाएगा। यह क्रिया बाद में पूर्ववत की जा सकती है।",
+  "settings.deactivateDesc":
+    "यह स्टाफ सदस्य अब सिस्टम तक पहुंच नहीं पाएगा। यह क्रिया बाद में पूर्ववत की जा सकती है।",
   "settings.deactivateAction": "निष्क्रिय करें",
   "settings.resetPwTitle": "पासवर्ड रीसेट करें",
-  "settings.resetPwDesc": "इस स्टाफ सदस्य के लिए नया पासवर्ड सेट करें। उन्हें साइन इन करने के लिए इस नए पासवर्ड का उपयोग करना होगा।",
+  "settings.resetPwDesc":
+    "इस स्टाफ सदस्य के लिए नया पासवर्ड सेट करें। उन्हें साइन इन करने के लिए इस नए पासवर्ड का उपयोग करना होगा।",
   "settings.resetPwNewLabel": "नया पासवर्ड",
   "settings.resetPwPlaceholder": "नया पासवर्ड दर्ज करें (न्यूनतम 6 अक्षर)",
   "settings.resetPwMinLength": "पासवर्ड कम से कम 6 अक्षर का होना चाहिए",
@@ -211,13 +214,15 @@ export const hi: Record<string, string> = {
   "customer.viewHistory": "इतिहास देखें",
   "customer.editProfile": "प्रोफ़ाइल संपादित करें",
   "customer.noVisitsTitle": "अभी तक कोई विज़िट नहीं",
-  "customer.noVisitsDesc": "अपना विज़िट इतिहास बनाने के लिए कतार में शामिल हों।",
+  "customer.noVisitsDesc":
+    "अपना विज़िट इतिहास बनाने के लिए कतार में शामिल हों।",
   "customer.joinFirstQueue": "पहली कतार में शामिल हों",
   "customer.missYou": "हम आपको याद करते हैं! जल्दी फिर आएं।",
   "customer.lastVisitDaysAgo": "आपकी अंतिम विज़िट {days} दिन पहले थी",
   "customer.visitAgain": "फिर आएं",
   "customer.noShowReminder": "आगमन समय के बारे में अनुकूल अनुस्मारक",
-  "customer.noShowReminderDesc": "कॉल होने पर समय पर पहुँचें ताकि अनुपस्थित न हों।",
+  "customer.noShowReminderDesc":
+    "कॉल होने पर समय पर पहुँचें ताकि अनुपस्थित न हों।",
   "customer.historyTitle": "विज़िट इतिहास",
   "customer.totalEntries": "कुल विज़िट",
   "customer.noHistory": "अभी तक कोई विज़िट दर्ज नहीं",
@@ -231,7 +236,8 @@ export const hi: Record<string, string> = {
   "customer.serviceTime": "सेवा",
   "customer.showingRange": "{start}-{end} का {total}",
   "customer.profileTitle": "आपकी प्रोफ़ाइल",
-  "customer.profileSubtitle": "अपनी व्यक्तिगत जानकारी और प्राथमिकताएं प्रबंधित करें",
+  "customer.profileSubtitle":
+    "अपनी व्यक्तिगत जानकारी और प्राथमिकताएं प्रबंधित करें",
   "customer.personalInfo": "व्यक्तिगत जानकारी",
   "customer.personalInfoDesc": "अपना नाम, फ़ोन और भाषा प्राथमिकता अपडेट करें",
   "customer.namePlaceholder": "आपका पूरा नाम",
@@ -258,16 +264,19 @@ export const hi: Record<string, string> = {
   "analytics.health_busy": "व्यस्त",
   "analytics.health_overloaded": "अतिभारित",
   "analytics.howCalculated": "यह कैसे गणना की जाती है?",
-  "analytics.healthTooltip": "औसत प्रतीक्षा समय बनाम 10 मिनट लक्ष्य (40%), अनुपस्थिति दर (30%), और वर्तमान भार बनाम औसत (30%) पर आधारित।",
+  "analytics.healthTooltip":
+    "औसत प्रतीक्षा समय बनाम 10 मिनट लक्ष्य (40%), अनुपस्थिति दर (30%), और वर्तमान भार बनाम औसत (30%) पर आधारित।",
   "analytics.staffLeaderboard": "स्टाफ लीडरबोर्ड",
-  "analytics.staffLeaderboardDesc": "दक्षता स्कोर (सेवित / औसत सेवा समय) के अनुसार",
+  "analytics.staffLeaderboardDesc":
+    "दक्षता स्कोर (सेवित / औसत सेवा समय) के अनुसार",
   "analytics.staff": "स्टाफ",
   "analytics.topPerformer": "शीर्ष प्रदर्शक",
   "analytics.served": "सेवित",
   "analytics.avgSvc": "औसत सेवा",
   "analytics.efficiency": "दक्षता",
   "analytics.hourlyHeatmap": "प्रति घंटा हीटमैप",
-  "analytics.heatmapDesc": "सप्ताह के दिन और घंटे के अनुसार कतार प्रविष्टि मात्रा",
+  "analytics.heatmapDesc":
+    "सप्ताह के दिन और घंटे के अनुसार कतार प्रविष्टि मात्रा",
   "analytics.less": "कम",
   "analytics.more": "अधिक",
   "analytics.serviceInsights": "सेवा अंतर्दृष्टि",
@@ -285,12 +294,14 @@ export const hi: Record<string, string> = {
   "analytics.last30Days": "पिछले 30 दिन",
   "analytics.custom": "कस्टम रेंज",
   "analytics.restricted": "पहुँच प्रतिबंधित",
-  "analytics.restrictedDesc": "केवल मालिक और व्यवस्थापक उन्नत विश्लेषण तक पहुँच सकते हैं।",
+  "analytics.restrictedDesc":
+    "केवल मालिक और व्यवस्थापक उन्नत विश्लेषण तक पहुँच सकते हैं।",
 
   // QR Stand Generator
   "nav.qrStand": "QR स्टैंड",
   "qr.title": "QR स्टैंड जनरेटर",
-  "qr.subtitle": "अपने स्थानों के लिए प्रीमियम प्रिंट करने योग्य QR स्टैंड बनाएं",
+  "qr.subtitle":
+    "अपने स्थानों के लिए प्रीमियम प्रिंट करने योग्य QR स्टैंड बनाएं",
   "qr.location": "स्थान",
   "qr.theme": "थीम",
   "qr.light": "लाइट",
@@ -299,7 +310,8 @@ export const hi: Record<string, string> = {
   "qr.customColor": "कस्टम",
   "qr.standLanguage": "स्टैंड भाषा",
   "qr.instruction": "कस्टम निर्देश",
-  "qr.instructionDesc": "प्रिंटेड स्टैंड पर QR कोड के नीचे दिखाया जाने वाला टेक्स्ट",
+  "qr.instructionDesc":
+    "प्रिंटेड स्टैंड पर QR कोड के नीचे दिखाया जाने वाला टेक्स्ट",
   "qr.showSteps": "चरण-दर-चरण गाइड दिखाएं",
   "qr.preview": "लाइव प्रीव्यू",
   "qr.downloadPNG": "PNG डाउनलोड करें",
@@ -316,13 +328,17 @@ export const hi: Record<string, string> = {
   "offline.lastUpdated": "अंतिम अपडेट",
   "offline.lastSynced": "अंतिम सिंक",
   "offline.pendingActions": "कतारबद्ध क्रियाएं",
-  "offline.replayingActions": "फिर से कनेक्ट — {count} कतारबद्ध क्रियाएं चला रहा है...",
-  "offline.replaySuccess": "{succeeded} कतारबद्ध क्रियाएं सफलतापूर्वक चलाई गईं।",
-  "offline.replayPartial": "{total} में से {succeeded} क्रियाएं चलाई गईं। {failed} विफल हुईं।",
+  "offline.replayingActions":
+    "फिर से कनेक्ट — {count} कतारबद्ध क्रियाएं चला रहा है...",
+  "offline.replaySuccess":
+    "{succeeded} कतारबद्ध क्रियाएं सफलतापूर्वक चलाई गईं।",
+  "offline.replayPartial":
+    "{total} में से {succeeded} क्रियाएं चलाई गईं। {failed} विफल हुईं।",
   "offline.actionQueued": "ऑफ़लाइन में कतारबद्ध — ऑनलाइन होने पर भेजा जाएगा।",
   "offline.healthCheckFailed": "कनेक्शन खो गया — स्वास्थ्य जांच विफल।",
   "offline.drawerTitle": "कतारबद्ध क्रियाएं",
-  "offline.drawerDesc": "ऑफ़लाइन किए गए कार्य। ऑनलाइन होने पर सर्वर को भेजे जाएंगे।",
+  "offline.drawerDesc":
+    "ऑफ़लाइन किए गए कार्य। ऑनलाइन होने पर सर्वर को भेजे जाएंगे।",
   "offline.noQueuedActions": "कोई कतारबद्ध क्रिया नहीं",
   "offline.noQueuedActionsDesc": "ऑफ़लाइन किए गए कार्य यहां दिखाई देंगे।",
   "offline.replayNow": "अभी चलाएं",
@@ -333,7 +349,8 @@ export const hi: Record<string, string> = {
   "kiosk.loadingDisplay": "डिस्प्ले लोड हो रहा है...",
   "kiosk.navigateHint": "डिस्प्ले सक्रिय करने के लिए कियोस्क URL पर जाएं।",
   "kiosk.staffLogin": "स्टाफ लॉगिन",
-  "kiosk.staffLoginDesc": "क्यू नियंत्रण सक्षम करने के लिए अपने स्टाफ क्रेडेंशियल से साइन इन करें।",
+  "kiosk.staffLoginDesc":
+    "क्यू नियंत्रण सक्षम करने के लिए अपने स्टाफ क्रेडेंशियल से साइन इन करें।",
   "kiosk.signIn": "साइन इन",
   "kiosk.loginFailed": "लॉगिन विफल। कृपया अपने क्रेडेंशियल जांचें।",
   "kiosk.loginEmailPasswordRequired": "ईमेल और पासवर्ड आवश्यक हैं।",
@@ -353,7 +370,8 @@ export const hi: Record<string, string> = {
   "kiosk.enterPinToExit": "बाहर निकलने के लिए PIN दर्ज करें",
   "kiosk.enter4DigitPin": "4-अंकीय कियोस्क PIN दर्ज करें",
   "kiosk.invalidPin": "अमान्य PIN। कृपया पुनः प्रयास करें।",
-  "kiosk.noPinConfigured": "कोई कियोस्क PIN कॉन्फ़िगर नहीं है। स्थान सेटिंग्स में सेट करें।",
+  "kiosk.noPinConfigured":
+    "कोई कियोस्क PIN कॉन्फ़िगर नहीं है। स्थान सेटिंग्स में सेट करें।",
 
   // Emergency Controls
   "emergency.title": "आपातकालीन नियंत्रण",
@@ -368,25 +386,33 @@ export const hi: Record<string, string> = {
   "emergency.closeQueue": "कतार बंद करें",
   "emergency.sendBroadcast": "प्रसारण भेजें",
   "emergency.broadcastMessage": "प्रसारण संदेश",
-  "emergency.broadcastPlaceholder": "ग्राहक पृष्ठों पर प्रदर्शित करने के लिए संदेश लिखें...",
+  "emergency.broadcastPlaceholder":
+    "ग्राहक पृष्ठों पर प्रदर्शित करने के लिए संदेश लिखें...",
   "emergency.pauseSuccess": "कतार रोकी गई — नए प्रवेश अब अवरुद्ध हैं।",
   "emergency.resumeSuccess": "कतार फिर शुरू — प्रवेश अब खुले हैं।",
-  "emergency.closeSuccess": "आपातकालीन बंद: {cancelled} प्रविष्टियाँ रद्द, {sessions} सत्र बंद।",
+  "emergency.closeSuccess":
+    "आपातकालीन बंद: {cancelled} प्रविष्टियाँ रद्द, {sessions} सत्र बंद।",
   "emergency.broadcastSuccess": "प्रसारण सूचना भेजी गई।",
   "emergency.broadcastCleared": "प्रसारण सूचना हटाई गई।",
   "emergency.confirmPauseTitle": "कतार रोकें?",
-  "emergency.confirmPauseDesc": "इससे नए ग्राहक शामिल नहीं हो पाएंगे। मौजूदा प्रविष्टियाँ प्रभावित नहीं होंगी।",
+  "emergency.confirmPauseDesc":
+    "इससे नए ग्राहक शामिल नहीं हो पाएंगे। मौजूदा प्रविष्टियाँ प्रभावित नहीं होंगी।",
   "emergency.confirmResumeTitle": "कतार फिर शुरू करें?",
-  "emergency.confirmResumeDesc": "इससे नए ग्राहक फिर से कतार में शामिल हो सकेंगे।",
+  "emergency.confirmResumeDesc":
+    "इससे नए ग्राहक फिर से कतार में शामिल हो सकेंगे।",
   "emergency.confirmCloseTitle": "आपातकालीन कतार बंद करें?",
-  "emergency.confirmCloseDesc": "यह सभी सक्रिय सत्र तुरंत बंद कर देगा और सभी प्रतीक्षारत प्रविष्टियाँ रद्द कर देगा। यह क्रिया पूर्ववत नहीं की जा सकती।",
+  "emergency.confirmCloseDesc":
+    "यह सभी सक्रिय सत्र तुरंत बंद कर देगा और सभी प्रतीक्षारत प्रविष्टियाँ रद्द कर देगा। यह क्रिया पूर्ववत नहीं की जा सकती।",
   "emergency.confirmBroadcastTitle": "प्रसारण सूचना भेजें?",
-  "emergency.confirmBroadcastDesc": "यह संदेश सभी ग्राहकों को दिखाई देगा: \"{message}\"",
+  "emergency.confirmBroadcastDesc":
+    'यह संदेश सभी ग्राहकों को दिखाई देगा: "{message}"',
   "emergency.confirmClearBroadcastTitle": "प्रसारण सूचना हटाएं?",
-  "emergency.confirmClearBroadcastDesc": "प्रसारण सूचना सभी ग्राहक पृष्ठों से हटा दी जाएगी।",
+  "emergency.confirmClearBroadcastDesc":
+    "प्रसारण सूचना सभी ग्राहक पृष्ठों से हटा दी जाएगी।",
   "emergency.cancel": "रद्द करें",
   "emergency.confirm": "पुष्टि करें",
   "emergency.joinPausedTitle": "कतार अस्थायी रूप से रुकी हुई है",
-  "emergency.joinPausedMessage": "हम अस्थायी रूप से नए वॉक-इन स्वीकार नहीं कर रहे हैं। कृपया शीघ्र ही दोबारा जांचें।",
+  "emergency.joinPausedMessage":
+    "हम अस्थायी रूप से नए वॉक-इन स्वीकार नहीं कर रहे हैं। कृपया शीघ्र ही दोबारा जांचें।",
   "emergency.noticeLabel": "सूचना",
 };

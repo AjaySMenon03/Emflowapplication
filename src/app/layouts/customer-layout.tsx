@@ -23,7 +23,12 @@ import { Button } from "../components/ui/button";
 import { Separator } from "../components/ui/separator";
 
 const navItems = [
-  { path: "/customer", icon: LayoutDashboard, labelKey: "customer.dashboard", end: true },
+  {
+    path: "/customer",
+    icon: LayoutDashboard,
+    labelKey: "customer.dashboard",
+    end: true,
+  },
   { path: "/customer/history", icon: History, labelKey: "customer.history" },
   { path: "/customer/profile", icon: UserCircle, labelKey: "customer.profile" },
 ];
@@ -50,7 +55,7 @@ export function CustomerLayout() {
               <Zap className="h-4.5 w-4.5 text-primary-foreground" />
             </div>
             <span className="font-semibold text-foreground tracking-tight text-lg">
-              EM Flow
+              Quecumber
             </span>
           </NavLink>
 
@@ -82,7 +87,9 @@ export function CustomerLayout() {
             <div className="hidden md:flex items-center gap-2 ml-2">
               <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/10">
                 <span className="text-xs font-semibold text-primary">
-                  {(user?.user_metadata?.name || user?.email || "C").charAt(0).toUpperCase()}
+                  {(user?.user_metadata?.name || user?.email || "C")
+                    .charAt(0)
+                    .toUpperCase()}
                 </span>
               </div>
               <Button

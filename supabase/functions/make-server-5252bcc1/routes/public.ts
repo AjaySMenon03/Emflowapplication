@@ -1,5 +1,5 @@
 /**
- * EM Flow — Public Routes (no auth required)
+ * Quecumber — Public Routes (no auth required)
  */
 import type { Hono } from "npm:hono";
 import * as kv from "../kv_store.tsx";
@@ -314,7 +314,9 @@ export function register(app: Hono) {
       }
       const position = await queueLogic.calculatePosition(entry.id);
       const eta = await queueLogic.calculateETA(entry.id);
-      const trackingLink = `http://localhost:5173/status/${entry.id}`;
+      const siteUrl = Deno.env.get("SITE_URL") || "http://localhost:5173";
+      const trackingLink = `${siteUrl}/status/${entry.id}`;
+
       try {
         const twilioSid = Deno.env.get("TWILIO_ACCOUNT_SID");
         const twilioToken = Deno.env.get("TWILIO_AUTH_TOKEN");

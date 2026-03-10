@@ -29,7 +29,12 @@ import { Label } from "../../components/ui/label";
 import { Badge } from "../../components/ui/badge";
 import { Separator } from "../../components/ui/separator";
 import { Switch } from "../../components/ui/switch";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "../../components/ui/tabs";
+import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from "../../components/ui/tabs";
 import { Textarea } from "../../components/ui/textarea";
 import { Checkbox } from "../../components/ui/checkbox";
 import {
@@ -160,7 +165,10 @@ interface WhatsAppSettings {
 
 // ── Role badge helper ──
 function RoleBadge({ role }: { role: string }) {
-  const config: Record<string, { label: string; variant: "default" | "secondary" | "outline"; icon: any }> = {
+  const config: Record<
+    string,
+    { label: string; variant: "default" | "secondary" | "outline"; icon: any }
+  > = {
     owner: { label: "Owner", variant: "default", icon: Crown },
     admin: { label: "Admin", variant: "secondary", icon: ShieldCheck },
     staff: { label: "Staff", variant: "outline", icon: Shield },
@@ -199,11 +207,23 @@ export function SettingsPage() {
     if (!businessId || !accessToken) return;
     (async () => {
       const [bizRes, locRes, staffRes, waRes, svcRes] = await Promise.all([
-        api<{ business: BusinessInfo }>(`/business/${businessId}`, { accessToken }),
-        api<{ locations: LocationInfo[] }>(`/business/${businessId}/locations`, { accessToken }),
-        api<{ staff: StaffMember[] }>(`/business/${businessId}/staff`, { accessToken }),
-        api<{ settings: WhatsAppSettings }>(`/settings/whatsapp/${businessId}`, { accessToken }),
-        api<{ services: Service[] }>(`/settings/services/${businessId}`, { accessToken }),
+        api<{ business: BusinessInfo }>(`/business/${businessId}`, {
+          accessToken,
+        }),
+        api<{ locations: LocationInfo[] }>(
+          `/business/${businessId}/locations`,
+          { accessToken },
+        ),
+        api<{ staff: StaffMember[] }>(`/business/${businessId}/staff`, {
+          accessToken,
+        }),
+        api<{ settings: WhatsAppSettings }>(
+          `/settings/whatsapp/${businessId}`,
+          { accessToken },
+        ),
+        api<{ services: Service[] }>(`/settings/services/${businessId}`, {
+          accessToken,
+        }),
       ]);
 
       if (bizRes.data?.business) setBusiness(bizRes.data.business);
@@ -224,7 +244,7 @@ export function SettingsPage() {
     if (!selectedLocation || !accessToken) return;
     const { data } = await api<{ queueTypes: QueueType[] }>(
       `/queue/types/${selectedLocation}`,
-      { accessToken }
+      { accessToken },
     );
     if (data?.queueTypes) setQueueTypes(data.queueTypes);
   }, [selectedLocation, accessToken]);
@@ -233,7 +253,7 @@ export function SettingsPage() {
     if (!businessId || !accessToken) return;
     const { data } = await api<{ services: Service[] }>(
       `/settings/services/${businessId}`,
-      { accessToken }
+      { accessToken },
     );
     if (data?.services) setServices(data.services);
   }, [businessId, accessToken]);
@@ -253,7 +273,9 @@ export function SettingsPage() {
   return (
     <div className="space-y-6 animate-fade-in">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">{t("nav.settings")}</h1>
+        <h1 className="text-2xl font-bold tracking-tight">
+          {t("nav.settings")}
+        </h1>
         <p className="text-muted-foreground text-sm">
           Manage queue types, staff permissions, and notifications
         </p>
@@ -304,7 +326,7 @@ export function SettingsPage() {
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
             {services.length > 0 ? (
               services
-                .filter(s => s.status === "active")
+                .filter((s) => s.status === "active")
                 .map((svc) => (
                   <ServiceCard
                     key={svc.id}
@@ -322,7 +344,8 @@ export function SettingsPage() {
                   </div>
                   <h3 className="font-medium text-lg">No services yet</h3>
                   <p className="text-sm text-muted-foreground max-w-xs mt-1">
-                    Create your first service to start assigning them to queue types.
+                    Create your first service to start assigning them to queue
+                    types.
                   </p>
                 </CardContent>
               </Card>
@@ -338,7 +361,10 @@ export function SettingsPage() {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               {locations.length > 1 && (
-                <Select value={selectedLocation} onValueChange={setSelectedLocation}>
+                <Select
+                  value={selectedLocation}
+                  onValueChange={setSelectedLocation}
+                >
                   <SelectTrigger className="w-48">
                     <MapPin className="h-3.5 w-3.5 mr-1 text-muted-foreground" />
                     <SelectValue />
@@ -369,9 +395,12 @@ export function SettingsPage() {
                   <ListChecks className="h-7 w-7 text-muted-foreground/50" />
                 </div>
                 <div className="text-center">
-                  <h3 className="font-semibold text-foreground">No queue types yet</h3>
+                  <h3 className="font-semibold text-foreground">
+                    No queue types yet
+                  </h3>
                   <p className="text-sm text-muted-foreground mt-1 max-w-xs">
-                    Create queue types to organize your service lines (e.g. General, VIP, Appointments).
+                    Create queue types to organize your service lines (e.g.
+                    General, VIP, Appointments).
                   </p>
                 </div>
               </CardContent>
@@ -401,9 +430,15 @@ export function SettingsPage() {
         <TabsContent value="staff" className="space-y-4">
           <div className="flex items-center justify-between">
             <div>
-              <h3 className="font-semibold text-foreground">{t("settings.staffMembers")}</h3>
+              <h3 className="font-semibold text-foreground">
+                {t("settings.staffMembers")}
+              </h3>
               <p className="text-xs text-muted-foreground">
-                {staff.length} {t("settings.staffMemberCount", staff.length !== 1 ? "members" : "member")}
+                {staff.length}{" "}
+                {t(
+                  "settings.staffMemberCount",
+                  staff.length !== 1 ? "members" : "member",
+                )}
               </p>
             </div>
             {isOwner && (
@@ -413,7 +448,7 @@ export function SettingsPage() {
                 onInvited={() => {
                   api<{ staff: StaffMember[] }>(
                     `/business/${businessId}/staff`,
-                    { accessToken: accessToken || "" }
+                    { accessToken: accessToken || "" },
                   ).then(({ data }) => {
                     if (data?.staff) setStaff(data.staff);
                   });
@@ -426,7 +461,9 @@ export function SettingsPage() {
             <Card>
               <CardContent className="flex flex-col items-center justify-center py-16 gap-4">
                 <Users className="h-10 w-10 text-muted-foreground/30" />
-                <p className="text-sm text-muted-foreground">{t("settings.noStaffFound")}</p>
+                <p className="text-sm text-muted-foreground">
+                  {t("settings.noStaffFound")}
+                </p>
               </CardContent>
             </Card>
           ) : (
@@ -442,7 +479,7 @@ export function SettingsPage() {
                   onUpdated={() => {
                     api<{ staff: StaffMember[] }>(
                       `/business/${businessId}/staff`,
-                      { accessToken: accessToken || "" }
+                      { accessToken: accessToken || "" },
                     ).then(({ data }) => {
                       if (data?.staff) setStaff(data.staff);
                     });
@@ -472,7 +509,10 @@ export function SettingsPage() {
             <h3 className="font-semibold text-foreground mb-3">Locations</h3>
             <div className="space-y-3">
               {locations.map((loc) => (
-                <Card key={loc.id} className="transition-shadow hover:shadow-sm">
+                <Card
+                  key={loc.id}
+                  className="transition-shadow hover:shadow-sm"
+                >
                   <CardContent className="p-4">
                     <div className="flex items-start justify-between gap-3">
                       <div className="flex items-start gap-3">
@@ -480,12 +520,19 @@ export function SettingsPage() {
                           <MapPin className="h-5 w-5 text-primary" />
                         </div>
                         <div>
-                          <h4 className="font-medium text-foreground">{loc.name}</h4>
+                          <h4 className="font-medium text-foreground">
+                            {loc.name}
+                          </h4>
                           {loc.address && (
-                            <p className="text-xs text-muted-foreground mt-0.5">{loc.address}</p>
+                            <p className="text-xs text-muted-foreground mt-0.5">
+                              {loc.address}
+                            </p>
                           )}
                           <p className="text-xs text-muted-foreground mt-0.5">
-                            Slug: <code className="bg-muted px-1 rounded text-[0.65rem]">{loc.slug}</code>
+                            Slug:{" "}
+                            <code className="bg-muted px-1 rounded text-[0.65rem]">
+                              {loc.slug}
+                            </code>
                           </p>
                         </div>
                       </div>
@@ -503,7 +550,9 @@ export function SettingsPage() {
 
           {/* Business Hours per location */}
           <div>
-            <h3 className="font-semibold text-foreground mb-3">Business Hours</h3>
+            <h3 className="font-semibold text-foreground mb-3">
+              Business Hours
+            </h3>
             <div className="space-y-4">
               {locations.map((loc) => (
                 <BusinessHoursEditor
@@ -559,7 +608,9 @@ function QueueTypeCard({
   const [estTime, setEstTime] = useState(String(qt.estimated_service_time));
   const [maxCap, setMaxCap] = useState(String(qt.max_capacity));
   const [desc, setDesc] = useState(qt.description || "");
-  const [selectedServiceIds, setSelectedServiceIds] = useState<string[]>(qt.service_ids || []);
+  const [selectedServiceIds, setSelectedServiceIds] = useState<string[]>(
+    qt.service_ids || [],
+  );
 
   const handleSave = async () => {
     setSaving(true);
@@ -606,26 +657,50 @@ function QueueTypeCard({
             <div className="grid grid-cols-2 gap-2">
               <div className="space-y-1">
                 <Label className="text-xs">Name</Label>
-                <Input value={name} onChange={(e) => setName(e.target.value)} className="h-8 text-sm" />
+                <Input
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  className="h-8 text-sm"
+                />
               </div>
               <div className="space-y-1">
                 <Label className="text-xs">Prefix</Label>
-                <Input value={prefix} onChange={(e) => setPrefix(e.target.value)} className="h-8 text-sm" maxLength={3} />
+                <Input
+                  value={prefix}
+                  onChange={(e) => setPrefix(e.target.value)}
+                  className="h-8 text-sm"
+                  maxLength={3}
+                />
               </div>
             </div>
             <div className="grid grid-cols-2 gap-2">
               <div className="space-y-1">
                 <Label className="text-xs">Est. Time (min)</Label>
-                <Input type="number" value={estTime} onChange={(e) => setEstTime(e.target.value)} className="h-8 text-sm" />
+                <Input
+                  type="number"
+                  value={estTime}
+                  onChange={(e) => setEstTime(e.target.value)}
+                  className="h-8 text-sm"
+                />
               </div>
               <div className="space-y-1">
                 <Label className="text-xs">Max Capacity</Label>
-                <Input type="number" value={maxCap} onChange={(e) => setMaxCap(e.target.value)} className="h-8 text-sm" />
+                <Input
+                  type="number"
+                  value={maxCap}
+                  onChange={(e) => setMaxCap(e.target.value)}
+                  className="h-8 text-sm"
+                />
               </div>
             </div>
             <div className="space-y-1">
               <Label className="text-xs">Description</Label>
-              <Input value={desc} onChange={(e) => setDesc(e.target.value)} placeholder="Optional" className="h-8 text-sm" />
+              <Input
+                value={desc}
+                onChange={(e) => setDesc(e.target.value)}
+                placeholder="Optional"
+                className="h-8 text-sm"
+              />
             </div>
             <div className="space-y-1">
               <Label className="text-xs">Services</Label>
@@ -636,11 +711,24 @@ function QueueTypeCard({
               />
             </div>
             <div className="flex gap-2 pt-1">
-              <Button size="sm" onClick={handleSave} disabled={saving} className="flex-1">
-                {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5 mr-1" />}
+              <Button
+                size="sm"
+                onClick={handleSave}
+                disabled={saving}
+                className="flex-1"
+              >
+                {saving ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Save className="h-3.5 w-3.5 mr-1" />
+                )}
                 Save
               </Button>
-              <Button size="sm" variant="ghost" onClick={() => setEditing(false)}>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => setEditing(false)}
+              >
                 <X className="h-3.5 w-3.5" />
               </Button>
             </div>
@@ -652,9 +740,13 @@ function QueueTypeCard({
                 {qt.prefix}
               </div>
               <div className="flex-1 min-w-0">
-                <h4 className="font-semibold text-foreground truncate">{qt.name}</h4>
+                <h4 className="font-semibold text-foreground truncate">
+                  {qt.name}
+                </h4>
                 {qt.description && (
-                  <p className="text-xs text-muted-foreground truncate mt-0.5">{qt.description}</p>
+                  <p className="text-xs text-muted-foreground truncate mt-0.5">
+                    {qt.description}
+                  </p>
                 )}
                 <div className="flex items-center gap-3 mt-2 text-xs text-muted-foreground">
                   <span className="flex items-center gap-1">
@@ -668,11 +760,15 @@ function QueueTypeCard({
                 </div>
                 {qt.service_ids && qt.service_ids.length > 0 && (
                   <div className="flex flex-wrap gap-1 mt-2">
-                    {qt.service_ids.map(id => {
-                      const svc = allServices.find(s => s.id === id);
+                    {qt.service_ids.map((id) => {
+                      const svc = allServices.find((s) => s.id === id);
                       if (!svc) return null;
                       return (
-                        <Badge key={id} variant="outline" className="text-[10px] py-0 h-4 bg-primary/5 text-primary border-primary/20">
+                        <Badge
+                          key={id}
+                          variant="outline"
+                          className="text-[10px] py-0 h-4 bg-primary/5 text-primary border-primary/20"
+                        >
                           {svc.name}
                         </Badge>
                       );
@@ -694,7 +790,11 @@ function QueueTypeCard({
               {isOwner && (
                 <AlertDialog>
                   <AlertDialogTrigger asChild>
-                    <Button size="sm" variant="ghost" className="h-7 text-xs gap-1 text-destructive hover:text-destructive">
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-7 text-xs gap-1 text-destructive hover:text-destructive"
+                    >
                       <Trash2 className="h-3 w-3" />
                       Delete
                     </Button>
@@ -703,12 +803,17 @@ function QueueTypeCard({
                     <AlertDialogHeader>
                       <AlertDialogTitle>Delete "{qt.name}"?</AlertDialogTitle>
                       <AlertDialogDescription>
-                        This will deactivate the queue type. Existing entries won't be affected, but new customers can no longer join this queue.
+                        This will deactivate the queue type. Existing entries
+                        won't be affected, but new customers can no longer join
+                        this queue.
                       </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
                       <AlertDialogCancel>Cancel</AlertDialogCancel>
-                      <AlertDialogAction onClick={handleDelete} className="bg-destructive text-destructive-foreground">
+                      <AlertDialogAction
+                        onClick={handleDelete}
+                        className="bg-destructive text-destructive-foreground"
+                      >
                         Delete
                       </AlertDialogAction>
                     </AlertDialogFooter>
@@ -795,26 +900,47 @@ function AddQueueTypeDialog({
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
               <Label>Name *</Label>
-              <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. General" />
+              <Input
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="e.g. General"
+              />
             </div>
             <div className="space-y-1.5">
               <Label>Prefix</Label>
-              <Input value={prefix} onChange={(e) => setPrefix(e.target.value)} placeholder="G" maxLength={3} />
+              <Input
+                value={prefix}
+                onChange={(e) => setPrefix(e.target.value)}
+                placeholder="G"
+                maxLength={3}
+              />
             </div>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
               <Label>Est. Service Time (min)</Label>
-              <Input type="number" value={estTime} onChange={(e) => setEstTime(e.target.value)} />
+              <Input
+                type="number"
+                value={estTime}
+                onChange={(e) => setEstTime(e.target.value)}
+              />
             </div>
             <div className="space-y-1.5">
               <Label>Max Capacity</Label>
-              <Input type="number" value={maxCap} onChange={(e) => setMaxCap(e.target.value)} />
+              <Input
+                type="number"
+                value={maxCap}
+                onChange={(e) => setMaxCap(e.target.value)}
+              />
             </div>
           </div>
           <div className="space-y-1.5">
             <Label>Description</Label>
-            <Input value={desc} onChange={(e) => setDesc(e.target.value)} placeholder="Optional description" />
+            <Input
+              value={desc}
+              onChange={(e) => setDesc(e.target.value)}
+              placeholder="Optional description"
+            />
           </div>
           <div className="space-y-1.5">
             <Label>Supported Services</Label>
@@ -869,7 +995,9 @@ function StaffMemberRow({
   const [updating, setUpdating] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [editName, setEditName] = useState(member.name);
-  const [editLocations, setEditLocations] = useState<string[]>(member.locations || []);
+  const [editLocations, setEditLocations] = useState<string[]>(
+    member.locations || [],
+  );
   const [editSaving, setEditSaving] = useState(false);
 
   // Reset password state
@@ -908,7 +1036,8 @@ function StaffMemberRow({
   };
 
   const handleEditSave = async () => {
-    if (!editName.trim()) return toast.error(t("settings.editStaffNameRequired"));
+    if (!editName.trim())
+      return toast.error(t("settings.editStaffNameRequired"));
     setEditSaving(true);
     const { error } = await api(`/settings/staff/${member.auth_user_id}`, {
       method: "PUT",
@@ -936,7 +1065,7 @@ function StaffMemberRow({
         method: "POST",
         accessToken,
         body: { password: newPassword },
-      }
+      },
     );
     if (error) {
       toast.error(error);
@@ -951,7 +1080,7 @@ function StaffMemberRow({
 
   const toggleLocation = (locId: string) => {
     setEditLocations((prev) =>
-      prev.includes(locId) ? prev.filter((l) => l !== locId) : [...prev, locId]
+      prev.includes(locId) ? prev.filter((l) => l !== locId) : [...prev, locId],
     );
   };
 
@@ -981,13 +1110,19 @@ function StaffMemberRow({
                 </Badge>
               )}
             </div>
-            <p className="text-xs text-muted-foreground truncate">{member.email}</p>
+            <p className="text-xs text-muted-foreground truncate">
+              {member.email}
+            </p>
             {member.locations && member.locations.length > 0 && (
               <div className="flex flex-wrap gap-1 mt-1">
                 {member.locations.map((locId) => {
                   const loc = locations.find((l) => l.id === locId);
                   return loc ? (
-                    <Badge key={locId} variant="outline" className="text-[0.6rem] px-1.5 py-0 gap-0.5">
+                    <Badge
+                      key={locId}
+                      variant="outline"
+                      className="text-[0.6rem] px-1.5 py-0 gap-0.5"
+                    >
                       <MapPin className="h-2.5 w-2.5" />
                       {loc.name}
                     </Badge>
@@ -1004,18 +1139,25 @@ function StaffMemberRow({
           {canEdit && (
             <div className="flex items-center gap-1 shrink-0">
               {/* Edit button */}
-              <Dialog open={editOpen} onOpenChange={(o) => {
-                setEditOpen(o);
-                if (o) {
-                  setEditName(member.name);
-                  setEditLocations(member.locations || []);
-                  setResetPwOpen(false);
-                  setNewPassword("");
-                  setShowPassword(false);
-                }
-              }}>
+              <Dialog
+                open={editOpen}
+                onOpenChange={(o) => {
+                  setEditOpen(o);
+                  if (o) {
+                    setEditName(member.name);
+                    setEditLocations(member.locations || []);
+                    setResetPwOpen(false);
+                    setNewPassword("");
+                    setShowPassword(false);
+                  }
+                }}
+              >
                 <DialogTrigger asChild>
-                  <Button size="icon" variant="ghost" className="h-7 w-7 text-muted-foreground hover:text-foreground">
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                  >
                     <Pencil className="h-3.5 w-3.5" />
                   </Button>
                 </DialogTrigger>
@@ -1144,12 +1286,13 @@ function StaffMemberRow({
                                 )}
                               </button>
                             </div>
-                            {newPassword.length > 0 && newPassword.length < 6 && (
-                              <p className="text-xs text-destructive flex items-center gap-1">
-                                <AlertCircle className="h-3 w-3" />
-                                {t("settings.resetPwMinLength")}
-                              </p>
-                            )}
+                            {newPassword.length > 0 &&
+                              newPassword.length < 6 && (
+                                <p className="text-xs text-destructive flex items-center gap-1">
+                                  <AlertCircle className="h-3 w-3" />
+                                  {t("settings.resetPwMinLength")}
+                                </p>
+                              )}
                           </div>
                           <Button
                             size="sm"
@@ -1170,7 +1313,10 @@ function StaffMemberRow({
                     </div>
                   </div>
                   <DialogFooter>
-                    <Button variant="outline" onClick={() => setEditOpen(false)}>
+                    <Button
+                      variant="outline"
+                      onClick={() => setEditOpen(false)}
+                    >
                       {t("common.cancel")}
                     </Button>
                     <Button onClick={handleEditSave} disabled={editSaving}>
@@ -1206,20 +1352,31 @@ function StaffMemberRow({
               {isOwner && (
                 <AlertDialog>
                   <AlertDialogTrigger asChild>
-                    <Button size="icon" variant="ghost" className="h-7 w-7 text-destructive hover:text-destructive">
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      className="h-7 w-7 text-destructive hover:text-destructive"
+                    >
                       <Trash2 className="h-3.5 w-3.5" />
                     </Button>
                   </AlertDialogTrigger>
                   <AlertDialogContent>
                     <AlertDialogHeader>
-                      <AlertDialogTitle>{t("settings.deactivateTitle")} {member.name}?</AlertDialogTitle>
+                      <AlertDialogTitle>
+                        {t("settings.deactivateTitle")} {member.name}?
+                      </AlertDialogTitle>
                       <AlertDialogDescription>
                         {t("settings.deactivateDesc")}
                       </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
-                      <AlertDialogCancel>{t("common.cancel")}</AlertDialogCancel>
-                      <AlertDialogAction onClick={handleDeactivate} className="bg-destructive text-destructive-foreground">
+                      <AlertDialogCancel>
+                        {t("common.cancel")}
+                      </AlertDialogCancel>
+                      <AlertDialogAction
+                        onClick={handleDeactivate}
+                        className="bg-destructive text-destructive-foreground"
+                      >
                         {t("settings.deactivateAction")}
                       </AlertDialogAction>
                     </AlertDialogFooter>
@@ -1294,13 +1451,18 @@ function InviteStaffDialog({
         <DialogHeader>
           <DialogTitle>Invite Staff Member</DialogTitle>
           <DialogDescription>
-            Create an account for a new team member. They'll be able to sign in immediately.
+            Create an account for a new team member. They'll be able to sign in
+            immediately.
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-4 py-2">
           <div className="space-y-1.5">
             <Label>Full Name *</Label>
-            <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Jane Smith" />
+            <Input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="Jane Smith"
+            />
           </div>
           <div className="space-y-1.5">
             <Label>Email *</Label>
@@ -1374,8 +1536,15 @@ function BusinessProfileForm({
       {
         method: "PUT",
         accessToken,
-        body: { name, phone: phone || null, email: email || null, address: address || null, industry: industry || null, country: country || null },
-      }
+        body: {
+          name,
+          phone: phone || null,
+          email: email || null,
+          address: address || null,
+          industry: industry || null,
+          country: country || null,
+        },
+      },
     );
     if (error) {
       toast.error(error);
@@ -1418,24 +1587,43 @@ function BusinessProfileForm({
           </div>
           <div className="space-y-1.5">
             <Label>Industry</Label>
-            <Input value={industry} onChange={(e) => setIndustry(e.target.value)} placeholder="e.g. Healthcare" />
+            <Input
+              value={industry}
+              onChange={(e) => setIndustry(e.target.value)}
+              placeholder="e.g. Healthcare"
+            />
           </div>
           <div className="space-y-1.5">
             <Label>Email</Label>
-            <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
+            <Input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+            />
           </div>
           <div className="space-y-1.5">
             <Label>Phone</Label>
-            <Input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} />
+            <Input
+              type="tel"
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+            />
           </div>
           <div className="space-y-1.5 sm:col-span-2">
             <Label>Address</Label>
-            <Input value={address} onChange={(e) => setAddress(e.target.value)} />
+            <Input
+              value={address}
+              onChange={(e) => setAddress(e.target.value)}
+            />
           </div>
         </div>
         <div className="mt-4 flex justify-end">
           <Button onClick={handleSave} disabled={saving}>
-            {saving ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Save className="h-4 w-4 mr-2" />}
+            {saving ? (
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+            ) : (
+              <Save className="h-4 w-4 mr-2" />
+            )}
             Save Changes
           </Button>
         </div>
@@ -1469,7 +1657,7 @@ function WhatsAppSettingsForm({
         method: "PUT",
         accessToken,
         body: { enabled, phoneNumber: phoneNumber || null, provider },
-      }
+      },
     );
     if (error) {
       toast.error(error);
@@ -1488,7 +1676,8 @@ function WhatsAppSettingsForm({
           <CardTitle className="text-base">WhatsApp Notifications</CardTitle>
         </div>
         <CardDescription>
-          Configure automated WhatsApp messages for queue confirmations and turn notifications
+          Configure automated WhatsApp messages for queue confirmations and turn
+          notifications
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
@@ -1500,10 +1689,7 @@ function WhatsAppSettingsForm({
               Send automatic notifications when customers join or are called
             </p>
           </div>
-          <Switch
-            checked={enabled}
-            onCheckedChange={setEnabled}
-          />
+          <Switch checked={enabled} onCheckedChange={setEnabled} />
         </div>
 
         {enabled && (
@@ -1544,8 +1730,9 @@ function WhatsAppSettingsForm({
                 <div className="text-xs text-blue-700 dark:text-blue-300">
                   <p className="font-medium">Provider Setup Required</p>
                   <p className="mt-0.5">
-                    You'll need to configure your WhatsApp API credentials in your provider's dashboard.
-                    Messages are sent using multilingual templates (EN, HI, TA, ML).
+                    You'll need to configure your WhatsApp API credentials in
+                    your provider's dashboard. Messages are sent using
+                    multilingual templates (EN, HI, TA, ML).
                   </p>
                 </div>
               </div>
@@ -1555,7 +1742,11 @@ function WhatsAppSettingsForm({
 
         <div className="flex justify-end">
           <Button onClick={handleSave} disabled={saving}>
-            {saving ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Save className="h-4 w-4 mr-2" />}
+            {saving ? (
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+            ) : (
+              <Save className="h-4 w-4 mr-2" />
+            )}
             Save Settings
           </Button>
         </div>
@@ -1618,12 +1809,13 @@ function AddServiceDialog({
         <DialogHeader>
           <DialogTitle>Add New Service</DialogTitle>
           <DialogDescription>
-            Create a new service that customers can select when joining the queue.
+            Create a new service that customers can select when joining the
+            queue.
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-4 py-4">
           <div className="space-y-1.5">
-            <Label>Service Name</Label>
+            <Label>Service Name *</Label>
             <Input
               value={name}
               onChange={(e) => setName(e.target.value)}
@@ -1649,7 +1841,9 @@ function AddServiceDialog({
           </div>
         </div>
         <DialogFooter>
-          <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
+          <Button variant="outline" onClick={() => setOpen(false)}>
+            Cancel
+          </Button>
           <Button onClick={handleCreate} disabled={loading || !name.trim()}>
             {loading && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
             Create Service
@@ -1720,7 +1914,11 @@ function ServiceCard({
           <div className="space-y-3 flex-1">
             <div className="space-y-1">
               <Label className="text-xs">Name</Label>
-              <Input value={name} onChange={(e) => setName(e.target.value)} className="h-8 text-sm" />
+              <Input
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                className="h-8 text-sm"
+              />
             </div>
             <div className="space-y-1">
               <Label className="text-xs">Description</Label>
@@ -1732,14 +1930,32 @@ function ServiceCard({
             </div>
             <div className="space-y-1">
               <Label className="text-xs">Avg. Time (min)</Label>
-              <Input type="number" value={avgTime} onChange={(e) => setAvgTime(e.target.value)} className="h-8 text-sm" />
+              <Input
+                type="number"
+                value={avgTime}
+                onChange={(e) => setAvgTime(e.target.value)}
+                className="h-8 text-sm"
+              />
             </div>
             <div className="flex gap-2 pt-2 mt-auto">
-              <Button size="sm" onClick={handleUpdate} disabled={saving} className="flex-1">
-                {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5 mr-1" />}
+              <Button
+                size="sm"
+                onClick={handleUpdate}
+                disabled={saving}
+                className="flex-1"
+              >
+                {saving ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Save className="h-3.5 w-3.5 mr-1" />
+                )}
                 Save
               </Button>
-              <Button size="sm" variant="ghost" onClick={() => setEditing(false)}>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => setEditing(false)}
+              >
                 <X className="h-3.5 w-3.5" />
               </Button>
             </div>
@@ -1758,7 +1974,11 @@ function ServiceCard({
                 {isOwner && (
                   <AlertDialog>
                     <AlertDialogTrigger asChild>
-                      <Button size="icon" variant="ghost" className="h-7 w-7 text-muted-foreground hover:text-destructive">
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                      >
                         <Trash2 className="h-3.5 w-3.5" />
                       </Button>
                     </AlertDialogTrigger>
@@ -1766,12 +1986,16 @@ function ServiceCard({
                       <AlertDialogHeader>
                         <AlertDialogTitle>Remove Service?</AlertDialogTitle>
                         <AlertDialogDescription>
-                          This will deactivate the service. Customers won't be able to select it anymore.
+                          This will deactivate the service. Customers won't be
+                          able to select it anymore.
                         </AlertDialogDescription>
                       </AlertDialogHeader>
                       <AlertDialogFooter>
                         <AlertDialogCancel>Cancel</AlertDialogCancel>
-                        <AlertDialogAction onClick={handleDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                        <AlertDialogAction
+                          onClick={handleDelete}
+                          className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                        >
                           Remove
                         </AlertDialogAction>
                       </AlertDialogFooter>
@@ -1782,7 +2006,9 @@ function ServiceCard({
             </div>
 
             <div className="mt-4 flex-1">
-              <h4 className="font-semibold text-foreground line-clamp-1">{svc.name}</h4>
+              <h4 className="font-semibold text-foreground line-clamp-1">
+                {svc.name}
+              </h4>
               <p className="text-xs text-muted-foreground mt-1 line-clamp-2 min-h-[2rem]">
                 {svc.description || "No description provided."}
               </p>
@@ -1816,11 +2042,11 @@ function ServiceMultiSelect({
   selectedIds: string[];
   onChange: (ids: string[]) => void;
 }) {
-  const activeServices = allServices.filter(s => s.status === "active");
+  const activeServices = allServices.filter((s) => s.status === "active");
 
   const toggleService = (id: string) => {
     if (selectedIds.includes(id)) {
-      onChange(selectedIds.filter(i => i !== id));
+      onChange(selectedIds.filter((i) => i !== id));
     } else {
       onChange([...selectedIds, id]);
     }
@@ -1835,16 +2061,22 @@ function ServiceMultiSelect({
         >
           <div className="flex flex-wrap gap-1">
             {selectedIds.length > 0 ? (
-              selectedIds.map(id => {
-                const svc = allServices.find(s => s.id === id);
+              selectedIds.map((id) => {
+                const svc = allServices.find((s) => s.id === id);
                 return svc ? (
-                  <Badge key={id} variant="secondary" className="text-[10px] py-0 h-5">
+                  <Badge
+                    key={id}
+                    variant="secondary"
+                    className="text-[10px] py-0 h-5"
+                  >
                     {svc.name}
                   </Badge>
                 ) : null;
               })
             ) : (
-              <span className="text-muted-foreground text-sm">Select services...</span>
+              <span className="text-muted-foreground text-sm">
+                Select services...
+              </span>
             )}
           </div>
           <Plus className="h-4 w-4 ml-2 opacity-50 shrink-0" />
@@ -1853,7 +2085,7 @@ function ServiceMultiSelect({
       <PopoverContent className="w-[300px] p-0" align="start">
         <div className="p-2 space-y-1">
           {activeServices.length > 0 ? (
-            activeServices.map(svc => (
+            activeServices.map((svc) => (
               <div
                 key={svc.id}
                 className="flex items-center space-x-2 p-2 hover:bg-muted rounded-md cursor-pointer"
@@ -1864,7 +2096,9 @@ function ServiceMultiSelect({
                   onCheckedChange={() => toggleService(svc.id)}
                 />
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium leading-none truncate">{svc.name}</p>
+                  <p className="text-sm font-medium leading-none truncate">
+                    {svc.name}
+                  </p>
                   {svc.description && (
                     <p className="text-[10px] text-muted-foreground truncate mt-1">
                       {svc.description}

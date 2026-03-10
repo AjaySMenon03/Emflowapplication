@@ -9,7 +9,7 @@ export const ta: Record<string, string> = {
   "nav.reports": "அறிக்கைகள் & பகுப்பாய்வு",
   "common.login": "உள்நுழைய",
   "common.logout": "வெளியேற",
-  "common.welcome": "EM Flow-க்கு வரவேற்கிறோம்",
+  "common.welcome": "Quecumber-க்கு வரவேற்கிறோம்",
   "common.description": "நவீன வணிகங்களுக்கான ஸ்மார்ட் வரிசை மேலாண்மை",
   "common.signup": "பதிவு செய்ய",
   "common.back": "பின்செல்",
@@ -161,7 +161,8 @@ export const ta: Record<string, string> = {
   "error.notFound": "பக்கம் கிடைக்கவில்லை",
   "error.notFoundDesc": "நீங்கள் தேடும் பக்கம் இல்லை.",
   "error.unauthorized": "அங்கீகரிக்கப்படவில்லை",
-  "error.unauthorizedDesc": "இந்தப் பக்கத்தைப் பார்க்க உங்களுக்கு அனுமதி இல்லை.",
+  "error.unauthorizedDesc":
+    "இந்தப் பக்கத்தைப் பார்க்க உங்களுக்கு அனுமதி இல்லை.",
 
   // Staff Edit
   "settings.staffMembers": "பணியாளர்கள்",
@@ -172,23 +173,31 @@ export const ta: Record<string, string> = {
   "settings.editStaffFullName": "முழு பெயர்",
   "settings.editStaffNamePlaceholder": "பணியாளர் பெயர்",
   "settings.editStaffEmail": "மின்னஞ்சல்",
-  "settings.editStaffEmailReadonly": "கணக்கு உருவாக்கிய பின் மின்னஞ்சல் மாற்ற முடியாது",
+  "settings.editStaffEmailReadonly":
+    "கணக்கு உருவாக்கிய பின் மின்னஞ்சல் மாற்ற முடியாது",
   "settings.editStaffCurrentRole": "தற்போதைய பங்கு",
-  "settings.editStaffRoleHint": "பணியாளர் பட்டியலில் உள்ள கீழ்தோன்றலைப் பயன்படுத்தி பங்கை மாற்றவும்",
+  "settings.editStaffRoleHint":
+    "பணியாளர் பட்டியலில் உள்ள கீழ்தோன்றலைப் பயன்படுத்தி பங்கை மாற்றவும்",
   "settings.editStaffLocations": "ஒதுக்கப்பட்ட இடங்கள்",
-  "settings.editStaffNoLocWarning": "இடங்கள் ஒதுக்கப்படவில்லை — பணியாளர் எந்த வரிசையையும் பார்க்க மாட்டார்",
+  "settings.editStaffNoLocWarning":
+    "இடங்கள் ஒதுக்கப்படவில்லை — பணியாளர் எந்த வரிசையையும் பார்க்க மாட்டார்",
   "settings.editStaffNameRequired": "பெயர் தேவை",
-  "settings.editStaffSuccess": "பணியாளர் விவரங்கள் வெற்றிகரமாக புதுப்பிக்கப்பட்டன",
+  "settings.editStaffSuccess":
+    "பணியாளர் விவரங்கள் வெற்றிகரமாக புதுப்பிக்கப்பட்டன",
   "settings.editStaffSave": "மாற்றங்களை சேமி",
   "settings.editStaffYou": "நீங்கள்",
   "settings.deactivateTitle": "செயலிழக்கச் செய்",
-  "settings.deactivateDesc": "இந்தப் பணியாளர் இனி அமைப்பை அணுக இயலாது. இந்த செயலை பின்னர் மாற்ற முடியும்.",
+  "settings.deactivateDesc":
+    "இந்தப் பணியாளர் இனி அமைப்பை அணுக இயலாது. இந்த செயலை பின்னர் மாற்ற முடியும்.",
   "settings.deactivateAction": "செயலிழக்கச் செய்",
   "settings.resetPwTitle": "கடவுச்சொல் மீட்டமை",
-  "settings.resetPwDesc": "இந்தப் பணியாளருக்கு புதிய கடவுச்சொல்லை அமைக்கவும். உள்நுழைய இந்த புதிய கடவுச்சொல்லைப் பயன்படுத்த வேண்டும்.",
+  "settings.resetPwDesc":
+    "இந்தப் பணியாளருக்கு புதிய கடவுச்சொல்லை அமைக்கவும். உள்நுழைய இந்த புதிய கடவுச்சொல்லைப் பயன்படுத்த வேண்டும்.",
   "settings.resetPwNewLabel": "புதிய கடவுச்சொல்",
-  "settings.resetPwPlaceholder": "புதிய கடவுச்சொல் உள்ளிடவும் (குறைந்தது 6 எழுத்துகள்)",
-  "settings.resetPwMinLength": "கடவுச்சொல் குறைந்தது 6 எழுத்துகள் இருக்க வேண்டும்",
+  "settings.resetPwPlaceholder":
+    "புதிய கடவுச்சொல் உள்ளிடவும் (குறைந்தது 6 எழுத்துகள்)",
+  "settings.resetPwMinLength":
+    "கடவுச்சொல் குறைந்தது 6 எழுத்துகள் இருக்க வேண்டும்",
   "settings.resetPwAction": "கடவுச்சொல் மீட்டமை",
   "settings.resetPwSuccess": "கடவுச்சொல் வெற்றிகரமாக மீட்டமைக்கப்பட்டது",
 
@@ -211,7 +220,8 @@ export const ta: Record<string, string> = {
   "customer.viewHistory": "வரலாறு காண்க",
   "customer.editProfile": "சுயவிவரம் திருத்து",
   "customer.noVisitsTitle": "இன்னும் வருகைகள் இல்லை",
-  "customer.noVisitsDesc": "உங்கள் வருகை வரலாற்றை உருவாக்க வரிசையில் சேருங்கள்.",
+  "customer.noVisitsDesc":
+    "உங்கள் வருகை வரலாற்றை உருவாக்க வரிசையில் சேருங்கள்.",
   "customer.joinFirstQueue": "முதல் வரிசையில் சேருங்கள்",
   "customer.missYou": "உங்களை மிஸ் செய்கிறோம்! விரைவில் மீண்டும் வாருங்கள்.",
   "customer.lastVisitDaysAgo": "உங்கள் கடைசி வருகை {days} நாட்கள் முன்",
@@ -231,9 +241,11 @@ export const ta: Record<string, string> = {
   "customer.serviceTime": "சேவை",
   "customer.showingRange": "{start}-{end} இல் {total}",
   "customer.profileTitle": "உங்கள் சுயவிவரம்",
-  "customer.profileSubtitle": "உங்கள் தனிப்பட்ட தகவல் மற்றும் விருப்பங்களை நிர்வகிக்கவும்",
+  "customer.profileSubtitle":
+    "உங்கள் தனிப்பட்ட தகவல் மற்றும் விருப்பங்களை நிர்வகிக்கவும்",
   "customer.personalInfo": "தனிப்பட்ட தகவல்",
-  "customer.personalInfoDesc": "உங்கள் பெயர், தொலைபேசி மற்றும் மொழி விருப்பத்தை புதுப்பிக்கவும்",
+  "customer.personalInfoDesc":
+    "உங்கள் பெயர், தொலைபேசி மற்றும் மொழி விருப்பத்தை புதுப்பிக்கவும்",
   "customer.namePlaceholder": "உங்கள் முழு பெயர்",
   "customer.readOnly": "படிக்க மட்டும்",
   "customer.preferredLanguage": "விருப்பமான மொழி",
@@ -246,7 +258,8 @@ export const ta: Record<string, string> = {
   // Advanced Analytics
   "nav.analytics": "பகுப்பாய்வு",
   "analytics.title": "மேம்பட்ட பகுப்பாய்வு",
-  "analytics.subtitle": "ஆழமான நுண்ணறிவு, ஊழியர் செயல்திறன் & முன்கணிப்பு போக்குகள்",
+  "analytics.subtitle":
+    "ஆழமான நுண்ணறிவு, ஊழியர் செயல்திறன் & முன்கணிப்பு போக்குகள்",
   "analytics.totalServed": "மொத்தம் சேவை",
   "analytics.avgWait": "சராசரி காத்திருப்பு",
   "analytics.avgService": "சராசரி சேவை நேரம்",
@@ -258,16 +271,19 @@ export const ta: Record<string, string> = {
   "analytics.health_busy": "பிஸி",
   "analytics.health_overloaded": "அதிக சுமை",
   "analytics.howCalculated": "இது எப்படி கணக்கிடப்படுகிறது?",
-  "analytics.healthTooltip": "சராசரி காத்திருப்பு நேரம் vs 10 நிமிட இலக்கு (40%), வராமை விகிதம் (30%), தற்போதைய சுமை vs சராசரி (30%) அடிப்படையில்.",
+  "analytics.healthTooltip":
+    "சராசரி காத்திருப்பு நேரம் vs 10 நிமிட இலக்கு (40%), வராமை விகிதம் (30%), தற்போதைய சுமை vs சராசரி (30%) அடிப்படையில்.",
   "analytics.staffLeaderboard": "ஊழியர் லீடர்போர்டு",
-  "analytics.staffLeaderboardDesc": "திறன் மதிப்பெண் (சேவை / சராசரி சேவை நேரம்) மூலம் தரவரிசை",
+  "analytics.staffLeaderboardDesc":
+    "திறன் மதிப்பெண் (சேவை / சராசரி சேவை நேரம்) மூலம் தரவரிசை",
   "analytics.staff": "ஊழியர்",
   "analytics.topPerformer": "சிறந்த செயல்திறன்",
   "analytics.served": "சேவை",
   "analytics.avgSvc": "சரா. சேவை",
   "analytics.efficiency": "திறன்",
   "analytics.hourlyHeatmap": "மணிநேர வெப்ப வரைபடம்",
-  "analytics.heatmapDesc": "வாரத்தின் நாள் மற்றும் மணிநேரம் வாரியாக வரிசை பதிவு அளவு",
+  "analytics.heatmapDesc":
+    "வாரத்தின் நாள் மற்றும் மணிநேரம் வாரியாக வரிசை பதிவு அளவு",
   "analytics.less": "குறைவு",
   "analytics.more": "அதிகம்",
   "analytics.serviceInsights": "சேவை நுண்ணறிவு",
@@ -285,12 +301,14 @@ export const ta: Record<string, string> = {
   "analytics.last30Days": "கடந்த 30 நாட்கள்",
   "analytics.custom": "தனிப்பயன் வரம்பு",
   "analytics.restricted": "அணுகல் தடை",
-  "analytics.restrictedDesc": "உரிமையாளர்கள் மற்றும் நிர்வாகிகள் மட்டுமே மேம்பட்ட பகுப்பாய்வை அணுகலாம்.",
+  "analytics.restrictedDesc":
+    "உரிமையாளர்கள் மற்றும் நிர்வாகிகள் மட்டுமே மேம்பட்ட பகுப்பாய்வை அணுகலாம்.",
 
   // QR Stand Generator
   "nav.qrStand": "QR ஸ்டாண்ட்",
   "qr.title": "QR ஸ்டாண்ட் ஜெனரேட்டர்",
-  "qr.subtitle": "உங்கள் இடங்களுக்கு பிரீமியம் அச்சிடக்கூடிய QR ஸ்டாண்ட்களை உருவாக்குங்கள்",
+  "qr.subtitle":
+    "உங்கள் இடங்களுக்கு பிரீமியம் அச்சிடக்கூடிய QR ஸ்டாண்ட்களை உருவாக்குங்கள்",
   "qr.location": "இடம்",
   "qr.theme": "தீம்",
   "qr.light": "லைட்",
@@ -299,7 +317,8 @@ export const ta: Record<string, string> = {
   "qr.customColor": "தனிப்பயன்",
   "qr.standLanguage": "ஸ்டாண்ட் மொழி",
   "qr.instruction": "தனிப்பயன் வழிமுறை",
-  "qr.instructionDesc": "அச்சிடப்பட்ட ஸ்டாண்டில் QR குறியீட்டின் கீழ் காட்டப்படும் உரை",
+  "qr.instructionDesc":
+    "அச்சிடப்பட்ட ஸ்டாண்டில் QR குறியீட்டின் கீழ் காட்டப்படும் உரை",
   "qr.showSteps": "படிப்படியான வழிகாட்டி காட்டு",
   "qr.preview": "நேரடி முன்னோட்டம்",
   "qr.downloadPNG": "PNG பதிவிறக்கம்",
@@ -308,7 +327,8 @@ export const ta: Record<string, string> = {
   "qr.downloadError": "ஏற்றுமதி தோல்வி. மீண்டும் முயற்சிக்கவும்.",
 
   // Offline Resilience
-  "offline.banner": "ஆஃப்லைன் முறை. நேரடி புதுப்பிப்புகள் இடைநிறுத்தப்பட்டுள்ளன.",
+  "offline.banner":
+    "ஆஃப்லைன் முறை. நேரடி புதுப்பிப்புகள் இடைநிறுத்தப்பட்டுள்ளன.",
   "offline.reconnecting": "மீண்டும் ஆன்லைன் — சமீபத்திய தரவை ஒத்திசைக்கிறது...",
   "offline.reconnected": "மீண்டும் இணைக்கப்பட்டது",
   "offline.mutationBlocked": "ஆஃப்லைனில் இருக்கும்போது செயல் கிடைக்காது.",
@@ -316,15 +336,21 @@ export const ta: Record<string, string> = {
   "offline.lastUpdated": "கடைசியாக புதுப்பிக்கப்பட்டது",
   "offline.lastSynced": "கடைசி ஒத்திசைவு",
   "offline.pendingActions": "வரிசையில் செயல்கள்",
-  "offline.replayingActions": "மீண்டும் இணைக்கப்பட்டது — {count} வரிசையில் செயல்களை இயக்குகிறது...",
-  "offline.replaySuccess": "{succeeded} வரிசையில் செயல்கள் வெற்றிகரமாக இயக்கப்பட்டன.",
-  "offline.replayPartial": "{total} இல் {succeeded} செயல்கள் இயக்கப்பட்டன. {failed} தோல்வி.",
-  "offline.actionQueued": "ஆஃப்லைனில் வரிசையில் — ஆன்லைனில் வரும்போது அனுப்பப்படும்.",
+  "offline.replayingActions":
+    "மீண்டும் இணைக்கப்பட்டது — {count} வரிசையில் செயல்களை இயக்குகிறது...",
+  "offline.replaySuccess":
+    "{succeeded} வரிசையில் செயல்கள் வெற்றிகரமாக இயக்கப்பட்டன.",
+  "offline.replayPartial":
+    "{total} இல் {succeeded} செயல்கள் இயக்கப்பட்டன. {failed} தோல்வி.",
+  "offline.actionQueued":
+    "ஆஃப்லைனில் வரிசையில் — ஆன்லைனில் வரும்போது அனுப்பப்படும்.",
   "offline.healthCheckFailed": "இணைப்பு துண்டிக்கப்பட்டது — நிலை சோதனை தோல்வி.",
   "offline.drawerTitle": "வரிசையில் செயல்கள்",
-  "offline.drawerDesc": "ஆஃப்லைனில் செய்த செயல்கள். ஆன்லைனில் வரும்போது சர்வருக்கு அனுப்பப்படும்.",
+  "offline.drawerDesc":
+    "ஆஃப்லைனில் செய்த செயல்கள். ஆன்லைனில் வரும்போது சர்வருக்கு அனுப்பப்படும்.",
   "offline.noQueuedActions": "வரிசையில் செயல்கள் இல்லை",
-  "offline.noQueuedActionsDesc": "ஆஃப்லைனில் செய்யப்படும் செயல்கள் இங்கே தோன்றும்.",
+  "offline.noQueuedActionsDesc":
+    "ஆஃப்லைனில் செய்யப்படும் செயல்கள் இங்கே தோன்றும்.",
   "offline.replayNow": "இப்போது இயக்கு",
   "offline.clearAllActions": "அனைத்தையும் நிராகரி",
   "offline.viewQueuedActions": "வரிசையில் செயல்களைப் பார்",
@@ -333,7 +359,8 @@ export const ta: Record<string, string> = {
   "kiosk.loadingDisplay": "காட்சி ஏற்றுகிறது...",
   "kiosk.navigateHint": "காட்சியை செயல்படுத்த கியோஸ்க் URL-க்கு செல்லவும்.",
   "kiosk.staffLogin": "ஊழியர் உள்நுழைவு",
-  "kiosk.staffLoginDesc": "வரிசை கட்டுப்பாடுகளை இயக்க உங்கள் ஊழியர் சான்றுகளுடன் உள்நுழையவும்.",
+  "kiosk.staffLoginDesc":
+    "வரிசை கட்டுப்பாடுகளை இயக்க உங்கள் ஊழியர் சான்றுகளுடன் உள்நுழையவும்.",
   "kiosk.signIn": "உள்நுழை",
   "kiosk.loginFailed": "உள்நுழைவு தோல்வி. உங்கள் சான்றுகளை சரிபார்க்கவும்.",
   "kiosk.loginEmailPasswordRequired": "மின்னஞ்சல் மற்றும் கடவுச்சொல் தேவை.",
@@ -353,7 +380,8 @@ export const ta: Record<string, string> = {
   "kiosk.enterPinToExit": "வெளியேற PIN உள்ளிடவும்",
   "kiosk.enter4DigitPin": "4-இலக்க கியோஸ்க் PIN உள்ளிடவும்",
   "kiosk.invalidPin": "தவறான PIN. மீண்டும் முயற்சிக்கவும்.",
-  "kiosk.noPinConfigured": "கியோஸ்க் PIN அமைக்கப்படவில்லை. இருப்பிட அமைப்புகளில் அமைக்கவும்.",
+  "kiosk.noPinConfigured":
+    "கியோஸ்க் PIN அமைக்கப்படவில்லை. இருப்பிட அமைப்புகளில் அமைக்கவும்.",
 
   // Emergency Controls
   "emergency.title": "அவசர கட்டுப்பாடுகள்",
@@ -361,32 +389,43 @@ export const ta: Record<string, string> = {
   "emergency.broadcasting": "ஒலிபரப்பு",
   "emergency.expand": "விரிவாக்கு",
   "emergency.collapse": "சுருக்கு",
-  "emergency.queuePausedBanner": "வரிசை நிறுத்தப்பட்டது — புதிய சேர்க்கைகள் தடுக்கப்பட்டுள்ளன",
+  "emergency.queuePausedBanner":
+    "வரிசை நிறுத்தப்பட்டது — புதிய சேர்க்கைகள் தடுக்கப்பட்டுள்ளன",
   "emergency.activeBroadcast": "செயலில் உள்ள அறிவிப்பு",
   "emergency.pauseQueue": "வரிசையை நிறுத்து",
   "emergency.resumeQueue": "வரிசையை தொடர்",
   "emergency.closeQueue": "வரிசையை மூடு",
   "emergency.sendBroadcast": "ஒலிபரப்பு அனுப்பு",
   "emergency.broadcastMessage": "ஒலிபரப்பு செய்தி",
-  "emergency.broadcastPlaceholder": "வாடிக்கையாளர் பக்கங்களில் காட்ட செய்தி எழுதுங்கள்...",
-  "emergency.pauseSuccess": "வரிசை நிறுத்தப்பட்டது — புதிய சேர்க்கைகள் தடுக்கப்பட்டன.",
-  "emergency.resumeSuccess": "வரிசை மீண்டும் தொடங்கியது — சேர்க்கைகள் திறக்கப்பட்டன.",
-  "emergency.closeSuccess": "அவசர மூடல்: {cancelled} பதிவுகள் ரத்து, {sessions} அமர்வுகள் மூடப்பட்டன.",
+  "emergency.broadcastPlaceholder":
+    "வாடிக்கையாளர் பக்கங்களில் காட்ட செய்தி எழுதுங்கள்...",
+  "emergency.pauseSuccess":
+    "வரிசை நிறுத்தப்பட்டது — புதிய சேர்க்கைகள் தடுக்கப்பட்டன.",
+  "emergency.resumeSuccess":
+    "வரிசை மீண்டும் தொடங்கியது — சேர்க்கைகள் திறக்கப்பட்டன.",
+  "emergency.closeSuccess":
+    "அவசர மூடல்: {cancelled} பதிவுகள் ரத்து, {sessions} அமர்வுகள் மூடப்பட்டன.",
   "emergency.broadcastSuccess": "ஒலிபரப்பு அறிவிப்பு அனுப்பப்பட்டது.",
   "emergency.broadcastCleared": "ஒலிபரப்பு அறிவிப்பு நீக்கப்பட்டது.",
   "emergency.confirmPauseTitle": "வரிசையை நிறுத்தவா?",
-  "emergency.confirmPauseDesc": "புதிய வாடிக்கையாளர்கள் சேர முடியாது. தற்போதைய பதிவுகள் பாதிக்கப்படாது.",
+  "emergency.confirmPauseDesc":
+    "புதிய வாடிக்கையாளர்கள் சேர முடியாது. தற்போதைய பதிவுகள் பாதிக்கப்படாது.",
   "emergency.confirmResumeTitle": "வரிசையை மீண்டும் தொடரவா?",
-  "emergency.confirmResumeDesc": "புதிய வாடிக்கையாளர்கள் மீண்டும் வரிசையில் சேரலாம்.",
+  "emergency.confirmResumeDesc":
+    "புதிய வாடிக்கையாளர்கள் மீண்டும் வரிசையில் சேரலாம்.",
   "emergency.confirmCloseTitle": "அவசர வரிசை மூடலா?",
-  "emergency.confirmCloseDesc": "இது அனைத்து அமர்வுகளையும் உடனடியாக மூடி, காத்திருக்கும் அனைத்து பதிவுகளையும் ரத்து செய்யும். இது மாற்ற முடியாதது.",
+  "emergency.confirmCloseDesc":
+    "இது அனைத்து அமர்வுகளையும் உடனடியாக மூடி, காத்திருக்கும் அனைத்து பதிவுகளையும் ரத்து செய்யும். இது மாற்ற முடியாதது.",
   "emergency.confirmBroadcastTitle": "ஒலிபரப்பு அறிவிப்பு அனுப்பவா?",
-  "emergency.confirmBroadcastDesc": "இந்தச் செய்தி அனைத்து வாடிக்கையாளர்களுக்கும் காட்டப்படும்: \"{message}\"",
+  "emergency.confirmBroadcastDesc":
+    'இந்தச் செய்தி அனைத்து வாடிக்கையாளர்களுக்கும் காட்டப்படும்: "{message}"',
   "emergency.confirmClearBroadcastTitle": "ஒலிபரப்பு அறிவிப்பை நீக்கவா?",
-  "emergency.confirmClearBroadcastDesc": "அனைத்து வாடிக்கையாளர் பக்கங்களிலிருந்தும் அறிவிப்பு நீக்கப்படும்.",
+  "emergency.confirmClearBroadcastDesc":
+    "அனைத்து வாடிக்கையாளர் பக்கங்களிலிருந்தும் அறிவிப்பு நீக்கப்படும்.",
   "emergency.cancel": "ரத்து செய்",
   "emergency.confirm": "உறுதிப்படுத்து",
   "emergency.joinPausedTitle": "வரிசை தற்காலிகமாக நிறுத்தப்பட்டுள்ளது",
-  "emergency.joinPausedMessage": "நாங்கள் தற்காலிகமாக புதிய வாக்-இன்களை ஏற்கவில்லை. விரைவில் மீண்டும் சரிபார்க்கவும்.",
+  "emergency.joinPausedMessage":
+    "நாங்கள் தற்காலிகமாக புதிய வாக்-இன்களை ஏற்கவில்லை. விரைவில் மீண்டும் சரிபார்க்கவும்.",
   "emergency.noticeLabel": "அறிவிப்பு",
 };
