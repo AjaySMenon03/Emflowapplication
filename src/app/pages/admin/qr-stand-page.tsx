@@ -612,7 +612,24 @@ export function QRStandPage() {
    * variables). This callback strips them from the cloned DOM before rendering.
    */
   const sanitizeClone = useCallback((_doc: Document, element: HTMLElement) => {
-    // Remove oklch values from CSS custom properties on all elements
+    // Remove external stylesheets — they contain oklch() CSS variables that
+    // html2canvas cannot parse. The QR stand card uses only inline styles so
+    // removing these links has no visual impact.
+    _doc
+      .querySelectorAll('link[rel="stylesheet"]')
+      .forEach((link) => link.remove());
+
+    // Strip oklch from all <style> tags in the cloned doc
+    _doc.querySelectorAll("style").forEach((styleEl) => {
+      if (styleEl.textContent && styleEl.textContent.includes("oklch(")) {
+        styleEl.textContent = styleEl.textContent.replace(
+          /oklch\([^)]*\)/g,
+          "transparent",
+        );
+      }
+    });
+
+    // Strip oklch from inline style properties on all elements
     const walker = element.querySelectorAll("*");
     const fixElement = (el: HTMLElement) => {
       const style = el.style;
@@ -626,16 +643,6 @@ export function QRStandPage() {
     };
     fixElement(element);
     walker.forEach((el) => fixElement(el as HTMLElement));
-
-    // Also strip oklch from all <style> tags and stylesheets in the cloned doc
-    _doc.querySelectorAll("style").forEach((styleEl) => {
-      if (styleEl.textContent && styleEl.textContent.includes("oklch(")) {
-        styleEl.textContent = styleEl.textContent.replace(
-          /oklch\([^)]*\)/g,
-          "transparent",
-        );
-      }
-    });
   }, []);
 
   // ── Export as PNG ──

@@ -137,23 +137,13 @@ export function LoginPage() {
         body: { email, password, name },
       });
       if (signupErr) {
-        // If user already exists, auto-attempt sign-in with the provided credentials
+        // If user already exists, show error instead of auto-signing in
         if (
           signupErr.toLowerCase().includes("already") ||
           signupErr.toLowerCase().includes("registered") ||
           signupErr.toLowerCase().includes("exists")
         ) {
-          const { error: loginErr } = await supabase.auth.signInWithPassword({
-            email,
-            password,
-          });
-          if (loginErr) {
-            setError(
-              "An account with this email already exists. Please sign in instead.",
-            );
-            setMode("email");
-          }
-          // If sign-in succeeded, AuthProvider handles the rest
+          setError("User already exists. Please try with another email.");
           return;
         }
         setError(signupErr);

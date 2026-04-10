@@ -57,6 +57,23 @@ const TIMEZONES = Intl.supportedValuesOf("timeZone");
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const PHONE_RE = /^\+?[\d\s\-()]{10,15}$/;
 
+/** Business name: 3–100 chars, only letters, digits, spaces, &, -, . */
+const BUSINESS_NAME_RE = /^[A-Za-z0-9\s&\-.]+$/;
+const BUSINESS_NAME_MIN = 3;
+const BUSINESS_NAME_MAX = 100;
+
+function validateBusinessName(name: string): string | null {
+  const trimmed = name.trim();
+  if (!trimmed) return "Business name is required";
+  if (trimmed.length < BUSINESS_NAME_MIN)
+    return `Business name must be at least ${BUSINESS_NAME_MIN} characters`;
+  if (trimmed.length > BUSINESS_NAME_MAX)
+    return `Business name must be ${BUSINESS_NAME_MAX} characters or fewer`;
+  if (!BUSINESS_NAME_RE.test(trimmed))
+    return "Business name can only contain letters, numbers, spaces, &, -, and .";
+  return null;
+}
+
 export function OnboardingPage() {
   const navigate = useNavigate();
   const { session } = useAuthStore();
@@ -102,13 +119,6 @@ export function OnboardingPage() {
   const handleNext = async () => {
     setError("");
 
-    // Guard: get a valid token or redirect
-    const accessToken = await getFreshToken();
-    if (!accessToken) {
-      navigate("/login", { replace: true });
-      return;
-    }
-
     // Validate current step
     const validationError = validateStep(store.currentStep);
     if (validationError) {
@@ -116,124 +126,133 @@ export function OnboardingPage() {
       return;
     }
 
+    // Steps 1-5: just advance locally — no server calls.
+    // All data is submitted only when the user clicks "Complete Setup" (step 6).
+    if (store.currentStep < 6) {
+      store.nextStep();
+      return;
+    }
+
+    // Step 6 — "Complete Setup": submit everything to the server
+    const accessToken = await getFreshToken();
+    if (!accessToken) {
+      navigate("/login", { replace: true });
+      return;
+    }
+
     setLoading(true);
 
     try {
-      // Save data progressively at each step
-      if (store.currentStep === 1) {
-        const { data, error: apiError } = await api<{
-          business: { id: string };
-          staffUser: any;
-        }>("/onboarding/business", {
+      // 1. Create business
+      const { data: bizData, error: bizError } = await api<{
+        business: { id: string };
+        staffUser: any;
+      }>("/onboarding/business", {
+        method: "POST",
+        accessToken,
+        body: {
+          name: store.businessName,
+          industry: store.industry,
+          phone: store.businessPhone,
+          email: store.businessEmail,
+          address: store.businessAddress,
+          ownerName: store.ownerName,
+        },
+      });
+      if (bizError) throw new Error(bizError);
+      const businessId = bizData!.business.id;
+
+      // 2. Create location
+      const { data: locData, error: locError } = await api<{
+        location: { id: string };
+      }>("/onboarding/location", {
+        method: "POST",
+        accessToken,
+        body: {
+          businessId,
+          name: store.locationName,
+          address: store.locationAddress,
+          city: store.locationCity,
+          phone: store.locationPhone,
+          timezone: store.timezone,
+          country: store.country,
+        },
+      });
+      if (locError) throw new Error(locError);
+      const locationId = locData!.location.id;
+
+      // 3. Create queue types
+      const validQueues = store.queueTypes.filter((qt) => qt.name.trim());
+      if (validQueues.length > 0) {
+        const { error: qError } = await api("/onboarding/queue-types", {
           method: "POST",
           accessToken,
-          body: {
-            name: store.businessName,
-            industry: store.industry,
-            phone: store.businessPhone,
-            email: store.businessEmail,
-            address: store.businessAddress,
-            ownerName: store.ownerName,
-          },
+          body: { businessId, locationId, queueTypes: validQueues },
         });
-        if (apiError) throw new Error(apiError);
-        store.updateField("createdBusinessId", data!.business.id);
+        if (qError) throw new Error(qError);
       }
 
-      if (store.currentStep === 2) {
-        const { data, error: apiError } = await api<{
-          location: { id: string };
-        }>("/onboarding/location", {
+      // 4. Set business hours
+      const { error: hoursError } = await api("/onboarding/business-hours", {
+        method: "POST",
+        accessToken,
+        body: { businessId, locationId, hours: store.businessHours },
+      });
+      if (hoursError) throw new Error(hoursError);
+
+      // 5. WhatsApp config
+      const { error: waError } = await api("/onboarding/whatsapp", {
+        method: "POST",
+        accessToken,
+        body: {
+          businessId,
+          enabled: store.whatsappEnabled,
+          phoneNumber: store.whatsappPhone,
+        },
+      });
+      if (waError) throw new Error(waError);
+
+      // 6. Staff (optional)
+      const validStaff = store.staffMembers.filter(
+        (s) => s.name.trim() && s.email.trim(),
+      );
+      if (validStaff.length > 0) {
+        const { error: staffError } = await api("/onboarding/staff", {
           method: "POST",
           accessToken,
-          body: {
-            businessId: store.createdBusinessId,
-            name: store.locationName,
-            address: store.locationAddress,
-            city: store.locationCity,
-            phone: store.locationPhone,
-            timezone: store.timezone,
-            country: store.country,
-          },
+          body: { businessId, locationId, staffMembers: validStaff },
         });
-        if (apiError) throw new Error(apiError);
-        store.updateField("createdLocationId", data!.location.id);
+        if (staffError) throw new Error(staffError);
       }
 
-      if (store.currentStep === 3) {
-        const validQueues = store.queueTypes.filter((qt) => qt.name.trim());
-        if (validQueues.length === 0)
-          throw new Error("Add at least one queue type");
-        const { error: apiError } = await api("/onboarding/queue-types", {
-          method: "POST",
-          accessToken,
-          body: {
-            businessId: store.createdBusinessId,
-            locationId: store.createdLocationId,
-            queueTypes: validQueues,
-          },
-        });
-        if (apiError) throw new Error(apiError);
+      // 7. Complete onboarding
+      await api("/onboarding/complete", {
+        method: "POST",
+        accessToken,
+      });
+
+      // Refresh session and manually fetch the updated role.
+      const { data: refreshData } = await supabase.auth.refreshSession();
+      const freshToken = refreshData?.session?.access_token ?? accessToken;
+      const { data: roleData } = await api<{
+        role: string | null;
+        businessId?: string;
+        hasOnboarded: boolean;
+        record: any;
+      }>("/auth/role", { accessToken: freshToken });
+      if (roleData) {
+        useAuthStore
+          .getState()
+          .setRole(
+            (roleData.role as any) ?? null,
+            roleData.businessId ?? null,
+            roleData.hasOnboarded,
+            roleData.record,
+          );
       }
 
-      if (store.currentStep === 4) {
-        const { error: apiError } = await api("/onboarding/business-hours", {
-          method: "POST",
-          accessToken,
-          body: {
-            businessId: store.createdBusinessId,
-            locationId: store.createdLocationId,
-            hours: store.businessHours,
-          },
-        });
-        if (apiError) throw new Error(apiError);
-      }
-
-      if (store.currentStep === 5) {
-        const { error: apiError } = await api("/onboarding/whatsapp", {
-          method: "POST",
-          accessToken,
-          body: {
-            businessId: store.createdBusinessId,
-            enabled: store.whatsappEnabled,
-            phoneNumber: store.whatsappPhone,
-          },
-        });
-        if (apiError) throw new Error(apiError);
-      }
-
-      if (store.currentStep === 6) {
-        // Staff is optional — only submit if there are entries
-        const validStaff = store.staffMembers.filter(
-          (s) => s.name.trim() && s.email.trim(),
-        );
-        if (validStaff.length > 0) {
-          const { error: apiError } = await api("/onboarding/staff", {
-            method: "POST",
-            accessToken,
-            body: {
-              businessId: store.createdBusinessId,
-              locationId: store.createdLocationId,
-              staffMembers: validStaff,
-            },
-          });
-          if (apiError) throw new Error(apiError);
-        }
-
-        // Complete onboarding
-        await api("/onboarding/complete", {
-          method: "POST",
-          accessToken,
-        });
-
-        // Refresh session to pick up new role
-        await supabase.auth.refreshSession();
-        store.reset();
-        navigate("/admin", { replace: true });
-        return;
-      }
-
-      store.nextStep();
+      store.reset();
+      navigate("/admin", { replace: true });
     } catch (err: any) {
       setError(err.message || "Something went wrong");
     } finally {
@@ -243,9 +262,11 @@ export function OnboardingPage() {
 
   function validateStep(step: number): string | null {
     switch (step) {
-      case 1:
-        if (!store.businessName.trim()) return "Business name is required";
+      case 1: {
+        const bizNameErr = validateBusinessName(store.businessName);
+        if (bizNameErr) return bizNameErr;
         if (!store.ownerName.trim()) return "Your name is required";
+        if (!store.industry) return "Industry is required";
         if (
           store.businessEmail.trim() &&
           !EMAIL_RE.test(store.businessEmail.trim())
@@ -257,6 +278,7 @@ export function OnboardingPage() {
         )
           return "Enter a valid business phone number (10\u201315 digits)";
         return null;
+      }
       case 2:
         if (!store.locationName.trim()) return "Location name is required";
         if (
@@ -269,6 +291,8 @@ export function OnboardingPage() {
         if (store.queueTypes.length === 0) return "Add at least one queue type";
         if (store.queueTypes.some((qt) => !qt.name.trim()))
           return "All queue types need a name";
+        if (store.queueTypes.some((qt) => qt.estimatedServiceTime < 1 || qt.estimatedServiceTime > 120))
+          return "Estimated service time must be between 1 and 120 minutes";
         return null;
       case 5:
         if (store.whatsappEnabled && !store.whatsappPhone.trim())
@@ -410,6 +434,7 @@ export function OnboardingPage() {
 function StepBusiness() {
   const store = useOnboardingStore();
   const [fieldErrors, setFieldErrors] = useState<{
+    name?: string;
     phone?: string;
     email?: string;
   }>({});
@@ -428,9 +453,21 @@ function StepBusiness() {
           <Input
             placeholder="Acme Healthcare"
             value={store.businessName}
-            onChange={(e) => store.updateField("businessName", e.target.value)}
+            maxLength={BUSINESS_NAME_MAX}
+            onChange={(e) => {
+              store.updateField("businessName", e.target.value);
+              setFieldErrors((p) => ({ ...p, name: undefined }));
+            }}
+            onBlur={() => {
+              const err = validateBusinessName(store.businessName);
+              if (err) setFieldErrors((p) => ({ ...p, name: err }));
+            }}
+            aria-invalid={!!fieldErrors.name}
             autoFocus
           />
+          {fieldErrors.name && (
+            <p className="text-xs text-destructive mt-1">{fieldErrors.name}</p>
+          )}
         </div>
         <div className="space-y-2">
           <Label>Your Name *</Label>
@@ -441,7 +478,7 @@ function StepBusiness() {
           />
         </div>
         <div className="space-y-2">
-          <Label>Industry</Label>
+          <Label>Industry *</Label>
           <Select
             value={store.industry}
             onValueChange={(v) => store.updateField("industry", v)}
@@ -702,14 +739,16 @@ function StepQueueTypes() {
                 <Input
                   type="number"
                   min={1}
+                  max={120}
                   value={qt.estimatedServiceTime}
-                  onChange={(e) =>
-                    store.updateQueueType(
-                      i,
-                      "estimatedServiceTime",
-                      parseInt(e.target.value) || 10,
-                    )
-                  }
+                  onChange={(e) => {
+                    const val = parseInt(e.target.value);
+                    if (!isNaN(val) && val >= 1 && val <= 120) {
+                      store.updateQueueType(i, "estimatedServiceTime", val);
+                    } else if (e.target.value === "") {
+                      store.updateQueueType(i, "estimatedServiceTime", 1);
+                    }
+                  }}
                 />
               </div>
             </div>

@@ -12,12 +12,12 @@ import { api } from "../lib/api";
 import { Loader2, Zap } from "lucide-react";
 
 export function CustomerGuard() {
-  const { isAuthenticated, isLoading, role, session } = useAuthStore();
+  const { isAuthenticated, isLoading, role, hasOnboarded, session } = useAuthStore();
   const registeredRef = useRef(false);
 
   // Auto-register as customer if no role
   useEffect(() => {
-    if (!isLoading && isAuthenticated && !role && session?.access_token && !registeredRef.current) {
+    if (!isLoading && isAuthenticated && !role && hasOnboarded && session?.access_token && !registeredRef.current) {
       registeredRef.current = true;
       api("/customer/register", {
         method: "POST",
@@ -25,7 +25,7 @@ export function CustomerGuard() {
         accessToken: session.access_token,
       }).catch(() => {});
     }
-  }, [isLoading, isAuthenticated, role, session]);
+  }, [isLoading, isAuthenticated, role, hasOnboarded, session]);
 
   if (isLoading) {
     return (
@@ -42,6 +42,11 @@ export function CustomerGuard() {
 
   if (!isAuthenticated) {
     return <Navigate to="/login" replace />;
+  }
+
+  // New user who hasn't completed onboarding → send to onboarding
+  if (!hasOnboarded && !role) {
+    return <Navigate to="/onboarding" replace />;
   }
 
   // If user is staff/admin/owner, redirect to admin

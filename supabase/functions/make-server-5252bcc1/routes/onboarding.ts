@@ -6,6 +6,18 @@ import * as kv from "../kv_store.tsx";
 import * as whatsapp from "../whatsapp/index.ts";
 import { supabaseAdmin, getAuthUser, uuid, now } from "../lib/helpers.ts";
 
+const BUSINESS_NAME_RE = /^[A-Za-z0-9\s&\-.]+$/;
+
+function validateBusinessName(name: unknown): string | null {
+  if (typeof name !== "string" || !name.trim()) return "Business name is required";
+  const trimmed = name.trim();
+  if (trimmed.length < 3) return "Business name must be at least 3 characters";
+  if (trimmed.length > 100) return "Business name must be 100 characters or fewer";
+  if (!BUSINESS_NAME_RE.test(trimmed))
+    return "Business name can only contain letters, numbers, spaces, &, -, and .";
+  return null;
+}
+
 export function register(app: Hono) {
   app.post("/onboarding/business", async (c: any) => {
     try {
@@ -13,6 +25,8 @@ export function register(app: Hono) {
       if (!user)
         return c.json({ error: "Unauthorized while creating business" }, 401);
       const body = await c.req.json();
+      const nameErr = validateBusinessName(body.name);
+      if (nameErr) return c.json({ error: nameErr }, 400);
       const businessId = uuid();
       const timestamp = now();
       const business = {
@@ -117,7 +131,7 @@ export function register(app: Hono) {
           name: qt.name,
           prefix: qt.prefix || qt.name.charAt(0).toUpperCase(),
           description: qt.description || null,
-          estimated_service_time: qt.estimatedServiceTime || 10,
+          estimated_service_time: Math.max(1, Math.min(120, qt.estimatedServiceTime || 10)),
           max_capacity: qt.maxCapacity || 100,
           status: "active",
           sort_order: qt.sortOrder || created.length,

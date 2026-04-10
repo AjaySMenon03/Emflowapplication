@@ -75,6 +75,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
 
         setAuth(session.user, session);
+
+        // Skip role re-check if user is mid-onboarding.
+        // After Step 1, the server creates a business/staff record which makes
+        // /auth/role return hasOnboarded=true. Any re-check (triggered by
+        // TOKEN_REFRESHED, SIGNED_IN on tab focus, etc.) would cause
+        // OnboardingGuard to redirect to /admin before finishing all 6 steps.
+        const isOnboarding = window.location.pathname.startsWith("/onboarding");
+        if (isOnboarding) {
+          return;
+        }
+
         await checkRole(session.access_token);
       } else {
         setAuth(null, null, false);

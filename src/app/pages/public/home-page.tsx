@@ -9,7 +9,7 @@ import { Zap, ArrowRight, Users, Globe, Bell, LayoutDashboard } from "lucide-rea
 
 export function HomePage() {
   const { t } = useLocaleStore();
-  const { isAuthenticated, role } = useAuthStore();
+  const { isAuthenticated, role, hasOnboarded } = useAuthStore();
 
   const features = [
     {
@@ -45,7 +45,14 @@ export function HomePage() {
       </div>
 
       <div className="flex flex-wrap items-center justify-center gap-3">
-        {isAuthenticated && (role === "customer" || !role) ? (
+        {isAuthenticated && !hasOnboarded && !role ? (
+          <Button asChild size="lg" className="gap-2 font-semibold">
+            <Link to="/onboarding">
+              {t("landing.getStarted")}
+              <ArrowRight className="h-4 w-4" />
+            </Link>
+          </Button>
+        ) : isAuthenticated && (role === "customer" || !role) ? (
           <Button asChild size="lg" className="gap-2 font-semibold">
             <Link to="/customer">
               <LayoutDashboard className="h-4 w-4" />

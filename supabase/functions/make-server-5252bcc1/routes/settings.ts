@@ -12,6 +12,18 @@ import {
   sendInviteEmail,
 } from "../lib/helpers.ts";
 
+const BUSINESS_NAME_RE = /^[A-Za-z0-9\s&\-.]+$/;
+
+function validateBusinessName(name: unknown): string | null {
+  if (typeof name !== "string" || !name.trim()) return "Business name is required";
+  const trimmed = name.trim();
+  if (trimmed.length < 3) return "Business name must be at least 3 characters";
+  if (trimmed.length > 100) return "Business name must be 100 characters or fewer";
+  if (!BUSINESS_NAME_RE.test(trimmed))
+    return "Business name can only contain letters, numbers, spaces, &, -, and .";
+  return null;
+}
+
 export function register(app: Hono) {
   // ── Queue Type CRUD ──
   app.post("/settings/queue-type", async (c: any) => {
@@ -37,7 +49,7 @@ export function register(app: Hono) {
         name: body.name,
         prefix: body.prefix || body.name.charAt(0).toUpperCase(),
         description: body.description || null,
-        estimated_service_time: body.estimatedServiceTime || 10,
+        estimated_service_time: Math.max(1, Math.min(120, body.estimatedServiceTime || 10)),
         max_capacity: body.maxCapacity || 100,
         service_ids: body.serviceIds || [],
         status: "active",
@@ -78,8 +90,9 @@ export function register(app: Hono) {
         name: body.name ?? existing.name,
         prefix: body.prefix ?? existing.prefix,
         description: body.description ?? existing.description,
-        estimated_service_time:
-          body.estimatedServiceTime ?? existing.estimated_service_time,
+        estimated_service_time: body.estimatedServiceTime != null
+          ? Math.max(1, Math.min(120, body.estimatedServiceTime))
+          : existing.estimated_service_time,
         max_capacity: body.maxCapacity ?? existing.max_capacity,
         service_ids: body.serviceIds ?? existing.service_ids ?? [],
         status: body.status ?? existing.status,
@@ -151,7 +164,7 @@ export function register(app: Hono) {
         business_id: staffRecord.business_id,
         name: body.name.trim(),
         description: body.description?.trim() || null,
-        avg_service_time: body.avgServiceTime || 10,
+        avg_service_time: Math.max(1, Math.min(120, body.avgServiceTime || 10)),
         status: "active",
         created_at: timestamp,
         updated_at: timestamp,
@@ -188,7 +201,9 @@ export function register(app: Hono) {
           body.description !== undefined
             ? body.description?.trim() || null
             : existing.description,
-        avg_service_time: body.avgServiceTime ?? existing.avg_service_time,
+        avg_service_time: body.avgServiceTime != null
+          ? Math.max(1, Math.min(120, body.avgServiceTime))
+          : existing.avg_service_time,
         status: body.status ?? existing.status,
         updated_at: now(),
       };
@@ -356,6 +371,10 @@ export function register(app: Hono) {
       const business = await kv.get(`business:${id}`);
       if (!business) return c.json({ error: "Business not found" }, 404);
       const body = await c.req.json();
+      if (body.name !== undefined) {
+        const nameErr = validateBusinessName(body.name);
+        if (nameErr) return c.json({ error: nameErr }, 400);
+      }
       const updated = {
         ...business,
         name: body.name ?? business.name,

@@ -613,6 +613,11 @@ function QueueTypeCard({
   );
 
   const handleSave = async () => {
+    const parsedTime = parseInt(estTime) || 10;
+    if (parsedTime < 1 || parsedTime > 120) {
+      toast.error("Est. service time must be between 1 and 120 minutes");
+      return;
+    }
     setSaving(true);
     const { error } = await api(`/settings/queue-type/${qt.id}`, {
       method: "PUT",
@@ -621,7 +626,7 @@ function QueueTypeCard({
         name,
         prefix,
         description: desc || null,
-        estimatedServiceTime: parseInt(estTime) || 10,
+        estimatedServiceTime: parsedTime,
         maxCapacity: parseInt(maxCap) || 100,
         serviceIds: selectedServiceIds,
       },
@@ -678,6 +683,8 @@ function QueueTypeCard({
                 <Label className="text-xs">Est. Time (min)</Label>
                 <Input
                   type="number"
+                  min={1}
+                  max={120}
                   value={estTime}
                   onChange={(e) => setEstTime(e.target.value)}
                   className="h-8 text-sm"
@@ -851,6 +858,10 @@ function AddQueueTypeDialog({
 
   const handleCreate = async () => {
     if (!name.trim()) return toast.error("Name is required");
+    const parsedTime = parseInt(estTime) || 10;
+    if (parsedTime < 1 || parsedTime > 120) {
+      return toast.error("Est. service time must be between 1 and 120 minutes");
+    }
     setSaving(true);
     const { error } = await api("/settings/queue-type", {
       method: "POST",
@@ -860,7 +871,7 @@ function AddQueueTypeDialog({
         name: name.trim(),
         prefix: prefix.trim() || name.charAt(0).toUpperCase(),
         description: desc.trim() || null,
-        estimatedServiceTime: parseInt(estTime) || 10,
+        estimatedServiceTime: parsedTime,
         maxCapacity: parseInt(maxCap) || 100,
         serviceIds: selectedServiceIds,
       },
@@ -921,6 +932,8 @@ function AddQueueTypeDialog({
               <Label>Est. Service Time (min)</Label>
               <Input
                 type="number"
+                min={1}
+                max={120}
                 value={estTime}
                 onChange={(e) => setEstTime(e.target.value)}
               />
@@ -1511,6 +1524,23 @@ function InviteStaffDialog({
   );
 }
 
+// ── Business Name Validation ──
+const BUSINESS_NAME_RE = /^[A-Za-z0-9\s&\-.]+$/;
+const BUSINESS_NAME_MIN = 3;
+const BUSINESS_NAME_MAX = 100;
+
+function validateBusinessName(val: string): string | null {
+  const trimmed = val.trim();
+  if (!trimmed) return "Business name is required";
+  if (trimmed.length < BUSINESS_NAME_MIN)
+    return `Business name must be at least ${BUSINESS_NAME_MIN} characters`;
+  if (trimmed.length > BUSINESS_NAME_MAX)
+    return `Business name must be ${BUSINESS_NAME_MAX} characters or fewer`;
+  if (!BUSINESS_NAME_RE.test(trimmed))
+    return "Business name can only contain letters, numbers, spaces, &, -, and .";
+  return null;
+}
+
 // ── Business Profile Form ──
 function BusinessProfileForm({
   business,
@@ -1523,13 +1553,26 @@ function BusinessProfileForm({
 }) {
   const [saving, setSaving] = useState(false);
   const [name, setName] = useState(business.name);
+  const [nameError, setNameError] = useState("");
   const [phone, setPhone] = useState(business.phone || "");
   const [email, setEmail] = useState(business.email || "");
   const [address, setAddress] = useState(business.address || "");
   const [industry, setIndustry] = useState(business.industry || "");
   const [country, setCountry] = useState(business.country || "");
 
+  const INDUSTRIES = ["Healthcare", "Saloon", "Hospitality"];
+
   const handleSave = async () => {
+    const bizNameErr = validateBusinessName(name);
+    if (bizNameErr) {
+      setNameError(bizNameErr);
+      toast.error(bizNameErr);
+      return;
+    }
+    if (!industry.trim()) {
+      toast.error("Industry is required");
+      return;
+    }
     setSaving(true);
     const { data, error } = await api<{ business: BusinessInfo }>(
       `/settings/business/${business.id}`,
@@ -1568,7 +1611,22 @@ function BusinessProfileForm({
         <div className="grid gap-4 sm:grid-cols-2">
           <div className="space-y-1.5">
             <Label>Business Name</Label>
-            <Input value={name} onChange={(e) => setName(e.target.value)} />
+            <Input
+              value={name}
+              maxLength={BUSINESS_NAME_MAX}
+              onChange={(e) => {
+                setName(e.target.value);
+                setNameError("");
+              }}
+              onBlur={() => {
+                const err = validateBusinessName(name);
+                if (err) setNameError(err);
+              }}
+              aria-invalid={!!nameError}
+            />
+            {nameError && (
+              <p className="text-xs text-destructive mt-1">{nameError}</p>
+            )}
           </div>
           <div className="space-y-2">
             <Label>Country</Label>
@@ -1586,12 +1644,19 @@ function BusinessProfileForm({
             </Select>
           </div>
           <div className="space-y-1.5">
-            <Label>Industry</Label>
-            <Input
-              value={industry}
-              onChange={(e) => setIndustry(e.target.value)}
-              placeholder="e.g. Healthcare"
-            />
+            <Label>Industry *</Label>
+            <Select value={industry} onValueChange={(v) => setIndustry(v)}>
+              <SelectTrigger>
+                <SelectValue placeholder="Select industry" />
+              </SelectTrigger>
+              <SelectContent>
+                {INDUSTRIES.map((ind) => (
+                  <SelectItem key={ind} value={ind}>
+                    {ind}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
           <div className="space-y-1.5">
             <Label>Email</Label>
@@ -1773,6 +1838,10 @@ function AddServiceDialog({
 
   const handleCreate = async () => {
     if (!name.trim()) return;
+    const parsedTime = parseInt(avgTime) || 15;
+    if (parsedTime < 1 || parsedTime > 120) {
+      return toast.error("Avg. service time must be between 1 and 120 minutes");
+    }
     setLoading(true);
     const { error } = await api("/settings/services", {
       method: "POST",
@@ -1780,7 +1849,7 @@ function AddServiceDialog({
       body: {
         name,
         description: description || null,
-        avgServiceTime: parseInt(avgTime) || 15,
+        avgServiceTime: parsedTime,
       },
     });
 
@@ -1835,6 +1904,8 @@ function AddServiceDialog({
             <Label>Avg. Service Time (minutes)</Label>
             <Input
               type="number"
+              min={1}
+              max={120}
               value={avgTime}
               onChange={(e) => setAvgTime(e.target.value)}
             />
@@ -1873,6 +1944,11 @@ function ServiceCard({
   const [avgTime, setAvgTime] = useState(String(svc.avg_service_time));
 
   const handleUpdate = async () => {
+    const parsedTime = parseInt(avgTime) || 15;
+    if (parsedTime < 1 || parsedTime > 120) {
+      toast.error("Avg. service time must be between 1 and 120 minutes");
+      return;
+    }
     setSaving(true);
     const { error } = await api(`/settings/services/${svc.id}`, {
       method: "PUT",
@@ -1880,7 +1956,7 @@ function ServiceCard({
       body: {
         name,
         description: description || null,
-        avgServiceTime: parseInt(avgTime) || 15,
+        avgServiceTime: parsedTime,
       },
     });
 
@@ -1932,6 +2008,8 @@ function ServiceCard({
               <Label className="text-xs">Avg. Time (min)</Label>
               <Input
                 type="number"
+                min={1}
+                max={120}
                 value={avgTime}
                 onChange={(e) => setAvgTime(e.target.value)}
                 className="h-8 text-sm"
